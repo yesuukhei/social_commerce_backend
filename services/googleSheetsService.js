@@ -56,12 +56,17 @@ class GoogleSheetsService {
    * Initialize the Google Spreadsheet connection
    * @param {string} sheetId - Optional specific sheet ID to load
    */
-  async init(sheetId = null) {
+  async init(sheetId = null, forceRefresh = false) {
     try {
       const spreadsheetId = sheetId || process.env.GOOGLE_SHEET_ID;
 
-      // If already initialized with this sheet, skip
-      if (this.initialized && this.doc?.spreadsheetId === spreadsheetId) return;
+      // If already initialized with this sheet, skip unless forced
+      if (
+        this.initialized &&
+        this.doc?.spreadsheetId === spreadsheetId &&
+        !forceRefresh
+      )
+        return;
 
       const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
       let privateKey = process.env.GOOGLE_PRIVATE_KEY;
@@ -71,22 +76,17 @@ class GoogleSheetsService {
         return;
       }
 
-      // Handle both literal \n and escaped \\n, and remove extra quotes/spaces
-      privateKey = privateKey
-        .replace(/^"|"$/g, "") // Remove wrapping quotes
-        .replace(/\\n/g, "\n") // Convert escaped newlines
-        .replace(/\\ /g, "") // Remove accidental escaped spaces (e.g. \ n)
-        .trim();
+      // Robust decoding for .env or direct environment variables
+      try {
+        // Remove literal quotes and convert \n to real newlines
+        privateKey = privateKey.replace(/^"|"$/g, "").split("\\n").join("\n");
 
-      // Final Guard: If the key body contains stray backslashes in the base64 part, clean them.
-      // Private keys are structured with headers/footers and base64 body.
-      if (privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
-        const parts = privateKey.split("-----");
-        // parts[2] is the actual base64 body if split by "-----"
-        if (parts[2]) {
-          parts[2] = parts[2].replace(/[^\w/+=]/g, ""); // Only keep A-Z, 0-9, _, /, +, =
+        // Ensure the headers are clean
+        if (!privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+          privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
         }
-        privateKey = `-----BEGIN PRIVATE KEY-----${parts[2]}-----END PRIVATE KEY-----`;
+      } catch (e) {
+        console.error("Error formatting private key:", e.message);
       }
 
       const auth = new JWT({
@@ -102,7 +102,44 @@ class GoogleSheetsService {
       this.initialized = true;
     } catch (error) {
       console.error("❌ Google Sheets Init Error:", error.message);
+      this.initialized = false;
     }
+  }
+
+  /**
+   * Analyze sheet structure using AI to map unknown headers
+   * @param {string} sheetId
+   * @returns {Object} Header mapping
+   */
+  async analyzeSheetStructure(sheetId = null) {
+    await this.init(sheetId);
+    if (!this.initialized) throw new Error("Google Sheets not initialized");
+
+    let sheet =
+      this.doc.sheetsByTitle["Products"] ||
+      this.doc.sheetsByTitle["Бараа"] ||
+      this.doc.sheetsByTitle["Бүтээгдэхүүн"] ||
+      this.doc.sheetsByIndex[0];
+    await sheet.loadHeaderRow();
+    const headers = sheet.headerValues;
+
+    // Fetch first 5 rows for semantic analysis
+    const rows = await sheet.getRows({ limit: 5 });
+    const sampleData = rows.map((row) => {
+      const obj = {};
+      headers.forEach((h) => (obj[h] = row.get(h)));
+      return obj;
+    });
+
+    const aiService = require("./aiService");
+    const mapping = await aiService.mapSheetHeaders(headers, sampleData);
+
+    return {
+      sheetId: sheet.spreadsheetId,
+      sheetTitle: sheet.title,
+      headers,
+      mapping,
+    };
   }
 
   /**
@@ -159,9 +196,15 @@ class GoogleSheetsService {
    */
   async syncProductsFromSheet(storeId, sheetId = null) {
     try {
-      const Product = require("../models/Product"); // Local require to avoid circular dependencies if any
-      await this.init(sheetId);
+      const Product = require("../models/Product");
+      const { Store } = require("../models");
+
+      await this.init(sheetId, true); // Force refresh to see new columns/headers
       if (!this.initialized) throw new Error("Google Sheets not initialized");
+
+      // Fetch the store to get its column mapping
+      const store = await Store.findById(storeId);
+      const mapping = store?.columnMapping || {};
 
       let sheet =
         this.doc.sheetsByTitle["Products"] ||
@@ -169,45 +212,96 @@ class GoogleSheetsService {
         this.doc.sheetsByIndex[0];
 
       const rows = await sheet.getRows();
-      console.log(`🔄 Syncing ${rows.length} rows from sheet: ${sheet.title}`);
+      console.log(
+        `🔄 Syncing ${rows.length} rows from sheet: ${sheet.title} using AI Mapping`,
+      );
 
       let successCount = 0;
       let errorCount = 0;
+      const syncedProductNames = [];
 
-      // Make sure "AI Status" column exists by checking headers
       await sheet.loadHeaderRow();
-      if (!sheet.headerValues.includes("AI Status")) {
-        // We can't easily add columns via this lib without clear header management
-        // but it will work if the user added it. For now, we just check.
-        console.warn("⚠️ 'AI Status' column not found in sheet");
-      }
 
       for (const row of rows) {
         try {
-          const name = row.get("Нэр") || row.get("Name") || row.get("Product");
-          if (!name || name.trim() === "") continue;
+          // Use Mapping if available, else fallback to defaults
+          const nameCol = mapping.name || "Нэр";
+          const priceCol = mapping.price || "Үнэ";
+          const stockCol = mapping.stock || "Үлдэгдэл";
+          const catCol = mapping.category || "Төрөл";
+          const descCol = mapping.description || "Тайлбар";
 
-          let priceStr = String(row.get("Үнэ") || row.get("Price") || "0");
-          let stockStr = String(row.get("Үлдэгдэл") || row.get("Stock") || "0");
+          const name = row.get(nameCol);
+          if (!name || String(name).trim() === "") continue;
 
-          // 1. Robust Sanitization: Extract only digits (handles 50k, 10,000₮, etc.)
-          const price = parseFloat(priceStr.replace(/[^0-9.]/g, ""));
-          const stock = parseInt(stockStr.replace(/[^0-9]/g, ""));
+          const trimmedName = String(name).trim();
+          const category = String(
+            row.get(catCol) || row.get("Category") || "",
+          ).trim();
 
-          const description =
-            row.get("Тайлбар") || row.get("Description") || "";
-          const category = row.get("Төрөл") || row.get("Category") || "";
+          // Composite key to allow same name in different categories
+          const productKey = `${trimmedName}-${category}`;
+          syncedProductNames.push(productKey);
 
-          // 2. Upsert in Database (Sync-then-Serve)
+          let priceStr = String(row.get(priceCol) || "").trim();
+          let stockStr = String(row.get(stockCol) || "").trim();
+
+          // Robust Sanitization: Only parse if there are numbers
+          const hasNumbers = (str) => /[0-9]/.test(str);
+
+          const price = hasNumbers(priceStr)
+            ? parseFloat(priceStr.replace(/[^0-9.]/g, ""))
+            : 0;
+
+          const stock = hasNumbers(stockStr)
+            ? parseInt(stockStr.replace(/[^0-9]/g, ""))
+            : 0;
+
+          const description = String(
+            row.get(descCol) || row.get("Description") || "",
+          ).trim();
+
+          // 2. Dynamic Attributes: Capture everything else
+          const attributes = new Map();
+          const standardCols = [
+            nameCol,
+            priceCol,
+            stockCol,
+            catCol,
+            descCol,
+            "AI Status",
+            "Name",
+            "Price",
+            "Stock",
+            "Category",
+            "Description",
+          ];
+
+          sheet.headerValues.forEach((h) => {
+            if (!standardCols.includes(h)) {
+              const val = row.get(h);
+              if (
+                val !== undefined &&
+                val !== null &&
+                String(val).trim() !== ""
+              ) {
+                attributes.set(h, String(val));
+              }
+            }
+          });
+
+          // 3. Upsert in Database (Sync-then-Serve)
+          // We use name + category as the unique identifier for a product in a store
           await Product.findOneAndUpdate(
-            { store: storeId, name: name.trim() },
+            { store: storeId, name: trimmedName, category: category },
             {
               store: storeId,
-              name: name.trim(),
+              name: trimmedName,
               description,
-              price: isNaN(price) ? 0 : price,
-              stock: isNaN(stock) ? 0 : stock,
+              price: price,
+              stock: stock,
               category,
+              attributes,
               isActive: true,
             },
             { upsert: true, new: true },
@@ -229,10 +323,31 @@ class GoogleSheetsService {
         }
       }
 
+      // 4. Soft Delete: Deactivate products not in the sheet
+      // We need to fetch all products for this store and compare using name+category
+      const allProducts = await Product.find({
+        store: storeId,
+        isActive: true,
+      });
+      let deactivatedCount = 0;
+
+      for (const product of allProducts) {
+        const productKey = `${product.name}-${product.category || ""}`;
+        if (!syncedProductNames.includes(productKey)) {
+          product.isActive = false;
+          await product.save();
+          deactivatedCount++;
+        }
+      }
+
       console.log(
-        `✅ Sync Completed: ${successCount} success, ${errorCount} errors`,
+        `✅ Sync Completed: ${successCount} success, ${errorCount} errors. Deactivated: ${deactivatedCount}`,
       );
-      return { successCount, errorCount };
+      return {
+        successCount,
+        errorCount,
+        deactivatedCount,
+      };
     } catch (error) {
       console.error("❌ Product Sync Error:", error.message);
       throw error;

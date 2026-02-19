@@ -103,3 +103,29 @@ exports.verifySheet = async (req, res) => {
     });
   }
 };
+
+/**
+ * Analyze sheet structure with AI
+ * POST /api/sync/analyze
+ */
+exports.analyzeSheet = async (req, res) => {
+  try {
+    const { sheetUrl } = req.body;
+    if (!sheetUrl) {
+      return res
+        .status(400)
+        .json({ success: false, message: "URL шаардлагатай" });
+    }
+
+    const sheetId = googleSheetsService.extractSheetId(sheetUrl);
+    const analysis = await googleSheetsService.analyzeSheetStructure(sheetId);
+
+    res.json({
+      success: true,
+      data: analysis,
+    });
+  } catch (error) {
+    console.error("❌ Analysis Controller Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

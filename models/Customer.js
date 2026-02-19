@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const customerSchema = new mongoose.Schema(
   {
@@ -6,7 +6,6 @@ const customerSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     name: {
       type: String,
@@ -14,7 +13,7 @@ const customerSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      sparse: true,
+      index: { sparse: true },
     },
     address: {
       type: String,
@@ -23,7 +22,7 @@ const customerSchema = new mongoose.Schema(
     orders: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Order',
+        ref: "Order",
       },
     ],
     // Customer metadata
@@ -49,7 +48,7 @@ const customerSchema = new mongoose.Schema(
     preferences: {
       language: {
         type: String,
-        default: 'mn',
+        default: "mn",
       },
       notifications: {
         type: Boolean,
@@ -63,19 +62,19 @@ const customerSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Index for faster queries
-customerSchema.index({ phoneNumber: 1 });
-customerSchema.index({ 'metadata.lastMessageDate': -1 });
+// phoneNumber index is automatically created by 'sparse: true' if we add index: true
+customerSchema.index({ "metadata.lastMessageDate": -1 });
 
 // Update last message date on save
-customerSchema.pre('save', function (next) {
+customerSchema.pre("save", function (next) {
   this.metadata.lastMessageDate = new Date();
   next();
 });
 
-const Customer = mongoose.model('Customer', customerSchema);
+const Customer = mongoose.model("Customer", customerSchema);
 
 module.exports = Customer;

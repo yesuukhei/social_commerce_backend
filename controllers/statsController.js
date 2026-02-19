@@ -90,15 +90,27 @@ exports.getStats = async (req, res) => {
           customer: o.customer?.name || "Unknown",
           items: o.items.map((i) => i.itemName).join(", "),
           total: o.totalAmount.toLocaleString(),
-          status: o.status,
+          paymentStatus: o.paymentStatus || "pending",
+          paymentMethod: o.paymentMethod || "cash",
+          hasDelivery: o.hasDelivery !== false,
+          pickupAddress: o.pickupAddress || "",
           statusLabel:
             o.status === "pending"
               ? "Хүлээгдэж байна"
-              : o.status === "completed"
+              : o.status === "confirmed"
                 ? "Баталгаажсан"
-                : o.status === "delivered"
-                  ? "Хүргэгдсэн"
-                  : o.status,
+                : o.status === "processing"
+                  ? "Бэлтгэгдэж байна"
+                  : o.status === "shipped"
+                    ? "Хүргэлтэд гарсан"
+                    : o.status === "delivered"
+                      ? "Хүргэгдсэн"
+                      : o.status === "completed"
+                        ? "Дууссан"
+                        : o.status === "cancelled"
+                          ? "Цуцлагдсан"
+                          : o.status,
+          createdAt: o.createdAt,
           needsReview: o.aiExtraction?.needsReview || false,
         })),
       },

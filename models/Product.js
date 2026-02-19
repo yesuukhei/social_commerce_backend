@@ -28,17 +28,17 @@ const productSchema = new mongoose.Schema(
     category: {
       type: String,
     },
-    variants: [
-      {
-        name: String, // e.g., "Size", "Color"
-        options: [String], // e.g., ["L", "XL"], ["Red", "Black"]
-      },
-    ],
     isActive: {
       type: Boolean,
       default: true,
     },
     images: [String],
+    // Dynamic attributes from unconventional sheet columns
+    attributes: {
+      type: Map,
+      of: String,
+      default: {},
+    },
   },
   {
     timestamps: true,

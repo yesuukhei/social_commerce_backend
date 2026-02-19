@@ -88,6 +88,9 @@ exports.getSettings = async (req, res) => {
         name: store.name,
         googleSheetId: store.googleSheetId,
         customInstructions: store.customInstructions,
+        columnMapping: store.columnMapping,
+        hasDelivery: store.hasDelivery,
+        pickupAddress: store.pickupAddress,
         sheetUrl: store.googleSheetId
           ? `https://docs.google.com/spreadsheets/d/${store.googleSheetId}`
           : "",
@@ -117,6 +120,16 @@ exports.updateSettings = async (req, res) => {
     const updateData = {};
     if (customInstructions !== undefined)
       updateData.customInstructions = customInstructions;
+
+    if (req.body.hasDelivery !== undefined)
+      updateData.hasDelivery = req.body.hasDelivery;
+
+    if (req.body.pickupAddress !== undefined)
+      updateData.pickupAddress = req.body.pickupAddress;
+
+    if (req.body.columnMapping) {
+      updateData.columnMapping = req.body.columnMapping;
+    }
 
     if (sheetUrl) {
       const sheetId = googleSheetsService.extractSheetId(sheetUrl);

@@ -1,6 +1,7 @@
 const messengerService = require("../services/messengerService");
 const aiService = require("../services/aiService");
 const googleSheetsService = require("../services/googleSheetsService");
+const paymentService = require("../services/paymentService");
 
 /**
  * Webhook Verification (GET request from Facebook)
@@ -57,17 +58,6 @@ exports.handleWebhook = async (req, res) => {
 
           // 1. Find Store
           let store = await Store.findOne({ facebookPageId: pageId });
-
-          // Seed a default store if none exists and we have env vars (Migration helper)
-          if (!store && pageId === process.env.FACEBOOK_PAGE_ID) {
-            store = new Store({
-              name: "Default Shop",
-              facebookPageId: process.env.FACEBOOK_PAGE_ID,
-              facebookPageToken: process.env.FACEBOOK_PAGE_ACCESS_TOKEN,
-              googleSheetId: process.env.GOOGLE_SHEET_ID,
-            });
-            await store.save();
-          }
 
           if (!store) {
             console.error(`❌ Store not found for Page ID: ${pageId}`);
@@ -143,11 +133,21 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         store.facebookPageToken,
       );
 
-      // Process message with Unified AI and Store Catalog
+      // 1. Fetch Customer Order History (to allow context-aware responses)
+      const orderHistory = await Order.find({
+        customer: customer._id,
+        store: store._id,
+      })
+        .sort({ createdAt: -1 })
+        .limit(3);
+
+      // 2. Process message with Unified AI, Catalog, and DB History
       const aiResult = await aiService.processMessage(
         messageText,
         history,
         catalog,
+        store,
+        orderHistory,
       );
 
       conversation.currentIntent = aiResult.intent || "browsing";
@@ -162,7 +162,11 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
           customer: customer._id,
           conversation: conversation._id,
           phoneNumber: aiResult.data.phone || "99999999",
-          address: aiResult.data.full_address || "Хаяг тодорхойгүй",
+          address: store.hasDelivery
+            ? aiResult.data.full_address || "Хаяг тодорхойгүй"
+            : "Очиж авах",
+          hasDelivery: store.hasDelivery,
+          pickupAddress: store.pickupAddress,
           items: aiResult.data.items.map((item) => ({
             itemName: item.name || "Бараа",
             quantity: item.quantity || 1,
@@ -180,6 +184,19 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         };
 
         const order = new Order(orderData);
+
+        // --- NEW: Generate Payment Invoice (QPay) ---
+        if (order.totalAmount > 0) {
+          const paymentResult = await paymentService.createQPayInvoice(order);
+          if (paymentResult.success) {
+            order.paymentMethod = "qpay";
+            order.paymentDetails = {
+              invoiceId: paymentResult.data.invoiceId,
+              qrCode: paymentResult.data.qrCode,
+            };
+          }
+        }
+
         await order.save(); // This triggers the pre-save total calculation
         console.log(`✅ Order Draft created for ${store.name}: ${order._id}`);
 
@@ -219,6 +236,19 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         response,
         store.facebookPageToken,
       );
+
+      // --- NEW: Send QR Code image if exists ---
+      if (
+        conversation.status === "order_created" &&
+        populatedOrder?.paymentDetails?.qrCode
+      ) {
+        // In a real scenario, this might be a URL or a base64 that we upload
+        // For simulation, we send a placeholder QR image or a message
+        console.log(
+          `🖼️ Sending QR Code for Invoice: ${populatedOrder.paymentDetails.invoiceId}`,
+        );
+        // await messengerService.sendImage(senderPsid, populatedOrder.paymentDetails.qrCode, store.facebookPageToken);
+      }
     } else if (receivedMessage.attachments) {
       response = {
         text: "📷 Зураг хүлээн авлаа! Захиалгын мэдээллээ текстээр илгээнэ үү.",

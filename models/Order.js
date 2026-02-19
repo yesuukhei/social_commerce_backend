@@ -49,7 +49,16 @@ const orderSchema = new mongoose.Schema(
     },
     address: {
       type: String,
-      required: true,
+      required: function () {
+        return this.hasDelivery;
+      },
+    },
+    hasDelivery: {
+      type: Boolean,
+      default: true,
+    },
+    pickupAddress: {
+      type: String,
     },
     // Order status
     status: {
@@ -64,13 +73,28 @@ const orderSchema = new mongoose.Schema(
         "cancelled",
       ],
       default: "pending",
-      index: true,
     },
-    // Financial information
+    // Financial & Payment information
     totalAmount: {
       type: Number,
       required: true,
       min: 0,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed", "refunded"],
+      default: "pending",
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "qpay", "bank_transfer", "other"],
+      default: "cash",
+    },
+    paymentDetails: {
+      invoiceId: String, // e.g. QPay Invoice ID
+      qrCode: String, // Base64 or URL
+      paidAt: Date,
+      transactionId: String,
     },
     // AI extraction data
     aiExtraction: {
@@ -123,7 +147,7 @@ const orderSchema = new mongoose.Schema(
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ "aiExtraction.needsReview": 1 });
 orderSchema.index({ customer: 1, createdAt: -1 });
-orderSchema.index({ phoneNumber: 1 }); // Keeping only one if it was duplicated
+orderSchema.index({ phoneNumber: 1 });
 
 // Calculate total before saving
 orderSchema.pre("save", function (next) {

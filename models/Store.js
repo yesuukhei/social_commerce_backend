@@ -12,7 +12,6 @@ const storeSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     facebookPageToken: {
       type: String,
@@ -22,21 +21,32 @@ const storeSchema = new mongoose.Schema(
     googleSheetId: {
       type: String,
     },
-    // Shop Specifics
-    shopType: {
-      type: String,
-      enum: ["clothing", "flower", "electronics", "food", "other"],
-      default: "other",
-    },
     // The "Soul" of the AI
     customInstructions: {
       type: String,
       default: "Чи бол найрсаг туслах бот юм.",
     },
+    // AI Feature Settings
+    columnMapping: {
+      name: { type: String, default: "" },
+      price: { type: String, default: "" },
+      stock: { type: String, default: "" },
+      category: { type: String, default: "" },
+      description: { type: String, default: "" },
+    },
     // Currency & Locale
     settings: {
       currency: { type: String, default: "MNT" },
       timezone: { type: String, default: "Asia/Ulaanbaatar" },
+    },
+    // Delivery & Pickup Settings
+    hasDelivery: {
+      type: Boolean,
+      default: true,
+    },
+    pickupAddress: {
+      type: String,
+      default: "",
     },
     isActive: {
       type: Boolean,

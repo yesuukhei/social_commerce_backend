@@ -43,6 +43,7 @@ app.use("/api/orders", require("./routes/orders"));
 app.use("/api/sync", require("./routes/sync"));
 app.use("/api/stores", require("./routes/stores"));
 app.use("/api/stats", require("./routes/stats"));
+app.use("/api/products", require("./routes/products"));
 // app.use('/api/customers', require('./routes/customers'));
 
 // Root endpoint
