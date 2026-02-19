@@ -3,6 +3,7 @@ const Order = require("./Order");
 const Conversation = require("./Conversation");
 const Store = require("./Store");
 const Product = require("./Product");
+const User = require("./User");
 
 module.exports = {
   Customer,
@@ -10,4 +11,5 @@ module.exports = {
   Conversation,
   Store,
   Product,
+  User,
 };

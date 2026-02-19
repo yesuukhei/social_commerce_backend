@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const storeController = require("../controllers/storeController");
+const { protect } = require("../middleware/auth");
+
+router.use(protect);
 
 /**
  * GET /api/stores/settings

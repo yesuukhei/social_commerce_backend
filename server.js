@@ -38,6 +38,7 @@ app.get("/health", (req, res) => {
 });
 
 // API Routes
+app.use("/api/auth", require("./routes/auth"));
 app.use("/api/webhook", require("./routes/webhook"));
 app.use("/api/orders", require("./routes/orders"));
 app.use("/api/sync", require("./routes/sync"));
