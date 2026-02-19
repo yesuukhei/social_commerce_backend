@@ -14,13 +14,18 @@ exports.getStats = async (req, res) => {
       query.store = storeId;
     }
 
-    // 1. Total Sales & Order Count
+    // 1. Total Sales & Order Count (Only completed orders count for revenue)
     const orders = await Order.find(query);
-    const totalSales = orders.reduce(
+    const completedOrders = orders.filter((o) => o.status === "completed");
+
+    const totalSales = completedOrders.reduce(
       (sum, order) => sum + (order.totalAmount || 0),
       0,
     );
-    const orderCount = orders.length;
+    const orderCount = completedOrders.length;
+    const pendingOrdersCount = orders.filter(
+      (o) => o.status === "pending",
+    ).length;
 
     // 2. AI Confidence Average
     const extractedOrders = orders.filter(
@@ -60,16 +65,17 @@ exports.getStats = async (req, res) => {
             trend: 12.5,
           },
           {
-            label: "Захиалгын тоо",
+            label: "Амжилттай захиалга",
             value: orderCount.toString(),
-            icon: "receipt_long",
+            icon: "check_circle",
             trend: 8.2,
           },
           {
-            label: "AI Баталгаажуулт",
-            value: `${avgConfidence.toFixed(0)}%`,
-            icon: "smart_toy",
-            trend: 2.1,
+            label: "Хүлээгдэж буй",
+            value: pendingOrdersCount.toString(),
+            icon: "pending_actions",
+            trend: 0,
+            color: "amber",
           },
           {
             label: "Шинэ хэрэглэгч",
@@ -79,24 +85,21 @@ exports.getStats = async (req, res) => {
           },
         ],
         recentOrders: recentOrders.map((o) => ({
+          _id: o._id,
           id: o._id.toString().substring(0, 8),
           customer: o.customer?.name || "Unknown",
           items: o.items.map((i) => i.itemName).join(", "),
           total: o.totalAmount.toLocaleString(),
-          status:
+          status: o.status,
+          statusLabel:
             o.status === "pending"
               ? "Хүлээгдэж байна"
-              : o.status === "confirmed"
+              : o.status === "completed"
                 ? "Баталгаажсан"
                 : o.status === "delivered"
                   ? "Хүргэгдсэн"
                   : o.status,
-          statusStyle:
-            o.status === "pending"
-              ? "bg-amber-50 text-amber-600 border-amber-100"
-              : o.status === "delivered"
-                ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                : "bg-slate-50 text-slate-600 border-slate-100",
+          needsReview: o.aiExtraction?.needsReview || false,
         })),
       },
     });

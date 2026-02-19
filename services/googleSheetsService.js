@@ -71,10 +71,11 @@ class GoogleSheetsService {
         return;
       }
 
-      // Handle both literal \n and escaped \\n, and remove extra quotes if any
+      // Handle both literal \n and escaped \\n, and remove extra quotes/spaces
       privateKey = privateKey
         .replace(/^"|"$/g, "") // Remove wrapping quotes
         .replace(/\\n/g, "\n") // Convert escaped newlines
+        .replace(/\\ /g, "") // Remove accidental escaped spaces (e.g. \ n)
         .trim();
 
       const auth = new JWT({

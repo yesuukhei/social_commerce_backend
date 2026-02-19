@@ -63,3 +63,79 @@ exports.configureSheet = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * Get settings for the default store
+ * GET /api/stores/settings
+ */
+exports.getSettings = async (req, res) => {
+  try {
+    let store = await Store.findOne();
+
+    if (!store) {
+      // Create a default store if none exists
+      store = await Store.create({
+        name: "My Story",
+        facebookPageId: "default",
+        facebookPageToken: "default",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: store._id,
+        name: store.name,
+        googleSheetId: store.googleSheetId,
+        customInstructions: store.customInstructions,
+        sheetUrl: store.googleSheetId
+          ? `https://docs.google.com/spreadsheets/d/${store.googleSheetId}`
+          : "",
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get Settings Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Update settings for the default store
+ * PATCH /api/stores/settings
+ */
+exports.updateSettings = async (req, res) => {
+  try {
+    const { customInstructions, sheetUrl } = req.body;
+    let store = await Store.findOne();
+
+    if (!store) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Store not found" });
+    }
+
+    const updateData = {};
+    if (customInstructions !== undefined)
+      updateData.customInstructions = customInstructions;
+
+    if (sheetUrl) {
+      const sheetId = googleSheetsService.extractSheetId(sheetUrl);
+      const verification = await googleSheetsService.verifySheetAccess(sheetId);
+      if (!verification.success) {
+        return res.status(400).json(verification);
+      }
+      updateData.googleSheetId = sheetId;
+    }
+
+    store = await Store.findByIdAndUpdate(store._id, updateData, { new: true });
+
+    return res.status(200).json({
+      success: true,
+      message: "Тохиргоо амжилттай хадгалагдлаа",
+      data: store,
+    });
+  } catch (error) {
+    console.error("❌ Update Settings Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

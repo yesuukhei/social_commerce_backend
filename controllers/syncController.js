@@ -71,3 +71,35 @@ exports.syncProducts = async (req, res) => {
     });
   }
 };
+
+/**
+ * Verify access and structure of a Google Sheet
+ * POST /api/sync/verify
+ */
+exports.verifySheet = async (req, res) => {
+  try {
+    const { sheetUrl } = req.body;
+
+    if (!sheetUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "URL шаардлагатай",
+      });
+    }
+
+    const sheetId = googleSheetsService.extractSheetId(sheetUrl);
+    const verification = await googleSheetsService.verifySheetAccess(sheetId);
+
+    if (verification.success) {
+      return res.status(200).json(verification);
+    } else {
+      return res.status(400).json(verification);
+    }
+  } catch (error) {
+    console.error("❌ Verify Controller Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

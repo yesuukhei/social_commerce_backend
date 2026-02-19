@@ -8,4 +8,10 @@ const syncController = require("../controllers/syncController");
  */
 router.post("/products", syncController.syncProducts);
 
+/**
+ * POST /api/sync/verify
+ * Verify access and structure of a Google Sheet without saving
+ */
+router.post("/verify", syncController.verifySheet);
+
 module.exports = router;
