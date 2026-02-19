@@ -78,6 +78,17 @@ class GoogleSheetsService {
         .replace(/\\ /g, "") // Remove accidental escaped spaces (e.g. \ n)
         .trim();
 
+      // Final Guard: If the key body contains stray backslashes in the base64 part, clean them.
+      // Private keys are structured with headers/footers and base64 body.
+      if (privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+        const parts = privateKey.split("-----");
+        // parts[2] is the actual base64 body if split by "-----"
+        if (parts[2]) {
+          parts[2] = parts[2].replace(/[^\w/+=]/g, ""); // Only keep A-Z, 0-9, _, /, +, =
+        }
+        privateKey = `-----BEGIN PRIVATE KEY-----${parts[2]}-----END PRIVATE KEY-----`;
+      }
+
       const auth = new JWT({
         email: serviceAccountEmail,
         key: privateKey,
