@@ -152,6 +152,8 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
 
       conversation.currentIntent = aiResult.intent || "browsing";
 
+      let populatedOrder; // Declare here so it is accessible outside the if block
+
       if (
         aiResult.intent === "ordering" &&
         aiResult.isOrderReady &&
@@ -209,9 +211,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         await order.save(); // This triggers the pre-save total calculation again but it's fine
         console.log(`✅ Order Draft created for ${store.name}: ${order._id}`);
 
-        const populatedOrder = await Order.findById(order._id).populate(
-          "customer",
-        );
+        populatedOrder = await Order.findById(order._id).populate("customer");
 
         // Pass the saved 'order' to generate a detailed confirmation
         const replyText = await aiService.generateResponse(
