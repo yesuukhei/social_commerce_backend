@@ -185,6 +185,15 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
 
         const order = new Order(orderData);
 
+        // Нарийвчлан мөнгөн дүнг тооцоолох (Invoice үүсгэхээс өмнө)
+        if (order.items && order.items.length > 0) {
+          order.totalAmount = order.items.reduce((total, item) => {
+            const subtotal = (item.price || 0) * item.quantity;
+            item.subtotal = subtotal;
+            return total + subtotal;
+          }, 0);
+        }
+
         // --- NEW: Generate Payment Invoice (QPay) ---
         if (order.totalAmount > 0) {
           const paymentResult = await paymentService.createQPayInvoice(order);
@@ -197,7 +206,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
           }
         }
 
-        await order.save(); // This triggers the pre-save total calculation
+        await order.save(); // This triggers the pre-save total calculation again but it's fine
         console.log(`✅ Order Draft created for ${store.name}: ${order._id}`);
 
         const populatedOrder = await Order.findById(order._id).populate(
@@ -240,14 +249,18 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       // --- NEW: Send QR Code image if exists ---
       if (
         conversation.status === "order_created" &&
-        populatedOrder?.paymentDetails?.qrCode
+        populatedOrder?.paymentDetails?.invoiceId
       ) {
-        // In a real scenario, this might be a URL or a base64 that we upload
-        // For simulation, we send a placeholder QR image or a message
         console.log(
-          `🖼️ Sending QR Code for Invoice: ${populatedOrder.paymentDetails.invoiceId}`,
+          `💳 Sending QPay link for Invoice: ${populatedOrder.paymentDetails.invoiceId}`,
         );
-        // await messengerService.sendImage(senderPsid, populatedOrder.paymentDetails.qrCode, store.facebookPageToken);
+        await messengerService.sendMessage(
+          senderPsid,
+          {
+            text: `💳 Төлбөрийн нэхэмжлэл: ${populatedOrder.paymentDetails.invoiceId}\n\nТа QPay ашиглан доорх холбоосоор болон банкны апп-аар төлнө үү: https://qpay.mn/q/${populatedOrder.paymentDetails.invoiceId}`,
+          },
+          store.facebookPageToken,
+        );
       }
     } else if (receivedMessage.attachments) {
       response = {

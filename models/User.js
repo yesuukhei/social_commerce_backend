@@ -22,6 +22,14 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
     },
+    facebookPageToken: {
+      type: String,
+      trim: true,
+    },
+    openAiKey: {
+      type: String,
+      trim: true,
+    },
     role: {
       type: String,
       enum: ["admin", "staff"],

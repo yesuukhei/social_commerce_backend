@@ -87,9 +87,16 @@ exports.getStats = async (req, res) => {
         recentOrders: recentOrders.map((o) => ({
           _id: o._id,
           id: o._id.toString().substring(0, 8),
-          customer: o.customer?.name || "Unknown",
-          items: o.items.map((i) => i.itemName).join(", "),
-          total: o.totalAmount.toLocaleString(),
+          customer: o.customer
+            ? {
+                name: o.customer.name,
+                facebookId: o.customer.facebookId,
+                avatar: o.customer.avatar,
+              }
+            : { name: "Тодорхойгүй" },
+          items: o.items || [],
+          totalAmount: o.totalAmount,
+          total: o.totalAmount?.toLocaleString() || "0",
           paymentStatus: o.paymentStatus || "pending",
           paymentMethod: o.paymentMethod || "cash",
           hasDelivery: o.hasDelivery !== false,

@@ -13,5 +13,6 @@ router.patch("/:id/status", orderController.updateOrderStatus);
 router.patch("/:id/verify", orderController.verifyOrder);
 router.post("/:id/approve", orderController.approveOrder);
 router.delete("/:id", orderController.deleteOrder);
+router.post("/:id/check-payment", orderController.checkPayment);
 
 module.exports = router;

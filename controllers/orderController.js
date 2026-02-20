@@ -195,3 +195,70 @@ exports.approveOrder = async (req, res, next) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * Check payment status
+ * POST /api/orders/:id/check-payment
+ */
+exports.checkPayment = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id).populate("customer");
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Захиалга олдсонгүй" });
+    }
+
+    if (order.paymentStatus === "paid") {
+      return res.json({
+        success: true,
+        message: "Төлбөр аль хэдийн төлөгдсөн байна",
+        order,
+      });
+    }
+
+    const paymentService = require("../services/paymentService");
+    const checkResult = await paymentService.checkPaymentStatus(
+      order.paymentDetails?.invoiceId,
+    );
+
+    if (checkResult.paid) {
+      order.paymentStatus = "paid";
+      order.status = "confirmed";
+      order.paymentDetails.paidAt = new Date();
+      await order.save();
+
+      // Send confirmation to user (optional for simulation but good UX)
+      try {
+        const messengerService = require("../services/messengerService");
+        const Store = require("../models/Store");
+        const store = await Store.findById(order.store);
+
+        await messengerService.sendMessage(
+          order.customer.facebookId,
+          {
+            text: `🎉 Төлбөр амжилттай төлөгдлөө! Таны захиалга (ID: ${order._id.toString().slice(-4)}) баталгаажлаа.`,
+          },
+          store.facebookPageToken,
+        );
+      } catch (err) {
+        console.error("Failed to send payment confirmation message", err);
+      }
+
+      return res.json({
+        success: true,
+        message: "Төлбөр амжилттай төлөгдөж захиалга баталгаажлаа!",
+        order,
+      });
+    } else {
+      return res.json({
+        success: false,
+        message: "Төлбөр хараахан төлөгдөөгүй байна",
+        order,
+      });
+    }
+  } catch (error) {
+    console.error("Error in checkPayment:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
