@@ -29,11 +29,25 @@ exports.getAllProducts = async (req, res) => {
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    const products = await Product.find(filter).sort({ createdAt: 1 });
+
+    // Fetch store info for dynamic headers/mapping
+    const Store = require("../models/Store");
+    let storeDoc = await Store.findOne({ user: req.user._id });
+
+    // Fallback for MVP/Testing if no user mapping yet
+    if (!storeDoc) {
+      storeDoc = await Store.findOne();
+    }
+
     res.json({
       success: true,
       count: products.length,
       data: products,
+      meta: {
+        headers: storeDoc?.sheetHeaders || [],
+        mapping: storeDoc?.columnMapping || {},
+      },
     });
   } catch (error) {
     console.error("❌ Get Products Error:", error);

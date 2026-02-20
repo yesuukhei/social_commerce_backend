@@ -194,7 +194,7 @@ class GoogleSheetsService {
    * @param {string} sheetId - The spreadsheet ID
    * @returns {Object} Sync results (count, errors)
    */
-  async syncProductsFromSheet(storeId, sheetId = null) {
+  async syncProductsFromSheet(storeId, sheetId = null, userId = null) {
     try {
       const Product = require("../models/Product");
       const { Store } = require("../models");
@@ -221,6 +221,17 @@ class GoogleSheetsService {
       const syncedProductNames = [];
 
       await sheet.loadHeaderRow();
+      const headers = sheet.headerValues;
+
+      // Update store's headers in database
+      if (store) {
+        store.sheetHeaders = headers;
+        // Ensure user is set to avoid validation errors
+        if (!store.user && userId) {
+          store.user = userId;
+        }
+        await store.save();
+      }
 
       for (const row of rows) {
         try {
@@ -229,7 +240,6 @@ class GoogleSheetsService {
           const priceCol = mapping.price || "Үнэ";
           const stockCol = mapping.stock || "Үлдэгдэл";
           const catCol = mapping.category || "Төрөл";
-          const descCol = mapping.description || "Тайлбар";
 
           const name = row.get(nameCol);
           if (!name || String(name).trim() === "") continue;
@@ -257,51 +267,33 @@ class GoogleSheetsService {
             ? parseInt(stockStr.replace(/[^0-9]/g, ""))
             : 0;
 
-          const description = String(
-            row.get(descCol) || row.get("Description") || "",
-          ).trim();
-
           // 2. Dynamic Attributes: Capture everything else
-          const attributes = new Map();
-          const standardCols = [
-            nameCol,
-            priceCol,
-            stockCol,
-            catCol,
-            descCol,
-            "AI Status",
-            "Name",
-            "Price",
-            "Stock",
-            "Category",
-            "Description",
-          ];
+          const attributes = {};
+          const mappedCols = [nameCol, priceCol, stockCol, catCol, "AI Status"];
 
-          sheet.headerValues.forEach((h) => {
-            if (!standardCols.includes(h)) {
+          headers.forEach((h) => {
+            if (!mappedCols.includes(h)) {
               const val = row.get(h);
               if (
                 val !== undefined &&
                 val !== null &&
                 String(val).trim() !== ""
               ) {
-                attributes.set(h, String(val));
+                attributes[h] = String(val);
               }
             }
           });
 
-          // 3. Upsert in Database (Sync-then-Serve)
-          // We use name + category as the unique identifier for a product in a store
+          // 3. Upsert in Database
           await Product.findOneAndUpdate(
             { store: storeId, name: trimmedName, category: category },
             {
               store: storeId,
               name: trimmedName,
-              description,
               price: price,
               stock: stock,
               category,
-              attributes,
+              attributes: attributes,
               isActive: true,
             },
             { upsert: true, new: true },

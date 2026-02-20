@@ -56,6 +56,7 @@ exports.syncProducts = async (req, res) => {
     const results = await googleSheetsService.syncProductsFromSheet(
       store._id,
       targetSheetId,
+      req.user._id, // Pass current user ID
     );
 
     return res.status(200).json({

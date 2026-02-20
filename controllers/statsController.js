@@ -96,27 +96,13 @@ exports.getStats = async (req, res) => {
             : { name: "Тодорхойгүй" },
           items: o.items || [],
           totalAmount: o.totalAmount,
-          total: o.totalAmount?.toLocaleString() || "0",
           paymentStatus: o.paymentStatus || "pending",
           paymentMethod: o.paymentMethod || "cash",
           hasDelivery: o.hasDelivery !== false,
           pickupAddress: o.pickupAddress || "",
-          statusLabel:
-            o.status === "pending"
-              ? "Хүлээгдэж байна"
-              : o.status === "confirmed"
-                ? "Баталгаажсан"
-                : o.status === "processing"
-                  ? "Бэлтгэгдэж байна"
-                  : o.status === "shipped"
-                    ? "Хүргэлтэд гарсан"
-                    : o.status === "delivered"
-                      ? "Хүргэгдсэн"
-                      : o.status === "completed"
-                        ? "Дууссан"
-                        : o.status === "cancelled"
-                          ? "Цуцлагдсан"
-                          : o.status,
+          address: o.address || "",
+          phone: o.phoneNumber || "",
+          status: o.status,
           createdAt: o.createdAt,
           needsReview: o.aiExtraction?.needsReview || false,
         })),

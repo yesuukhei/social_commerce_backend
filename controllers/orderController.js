@@ -224,7 +224,7 @@ exports.checkPayment = async (req, res, next) => {
 
     if (checkResult.paid) {
       order.paymentStatus = "paid";
-      order.status = "confirmed";
+      order.status = "completed";
       order.paymentDetails.paidAt = new Date();
       await order.save();
 

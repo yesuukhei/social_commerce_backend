@@ -35,8 +35,7 @@ const productSchema = new mongoose.Schema(
     images: [String],
     // Dynamic attributes from unconventional sheet columns
     attributes: {
-      type: Map,
-      of: String,
+      type: mongoose.Schema.Types.Mixed,
       default: {},
     },
   },

@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const storeSchema = new mongoose.Schema(
   {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
     name: {
       type: String,
       required: true,
@@ -27,6 +33,7 @@ const storeSchema = new mongoose.Schema(
       default: "Чи бол найрсаг туслах бот юм.",
     },
     // AI Feature Settings
+    sheetHeaders: [String], // Dynamically captured headers from Google Sheets
     columnMapping: {
       name: { type: String, default: "" },
       price: { type: String, default: "" },
