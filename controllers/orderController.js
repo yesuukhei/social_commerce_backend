@@ -12,12 +12,26 @@ exports.getAllOrders = async (req, res, next) => {
   try {
     const { status, customerId, page = 1, limit = 20 } = req.query;
 
-    const query = {};
+    // 1. Only show orders from stores belonging to this user
+    const userStores = await Store.find({ user: req.user._id }).select("_id");
+    const storeIds = userStores.map((s) => s._id);
+
+    if (storeIds.length === 0) {
+      return res.json({
+        orders: [],
+        totalPages: 0,
+        currentPage: page,
+        totalOrders: 0,
+      });
+    }
+
+    const query = { store: { $in: storeIds } };
     if (status) query.status = status;
     if (customerId) query.customer = customerId;
 
     const orders = await Order.find(query)
-      .populate("customer", "name facebookId")
+      .populate("customer", "name facebookId avatar")
+      .populate("store", "name")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -26,6 +40,7 @@ exports.getAllOrders = async (req, res, next) => {
     const count = await Order.countDocuments(query);
 
     res.json({
+      success: true,
       orders,
       totalPages: Math.ceil(count / limit),
       currentPage: page,
@@ -45,12 +60,27 @@ exports.getOrderById = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate("customer")
-      .populate("conversation");
+      .populate("store")
+      .populate({
+        path: "conversation",
+        populate: { path: "customer", select: "name avatar" },
+      });
 
     if (!order) {
-      return res.status(404).json({ message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
-    res.json(order);
+
+    // Security check: Ensure user owns the store this order belongs to
+    if (order.store?.user?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    res.json({
+      success: true,
+      data: order,
+    });
   } catch (error) {
     console.log("Error in getOrderById:", error);
     next(error);

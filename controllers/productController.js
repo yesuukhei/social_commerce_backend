@@ -11,11 +11,32 @@ const escapeRegex = (string) => {
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, isActive, store, search, minPrice, maxPrice } = req.query;
-    const filter = {};
+
+    // 1. Get all stores owned by this user
+    const Store = require("../models/Store");
+    const userStores = await Store.find({ user: req.user._id }).select(
+      "_id sheetHeaders columnMapping",
+    );
+    const storeIds = userStores.map((s) => s._id);
+
+    if (storeIds.length === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        data: [],
+        meta: { headers: [], mapping: {} },
+      });
+    }
+
+    const filter = { store: { $in: storeIds } };
+
+    // If specific store requested, verify ownership
+    if (store && storeIds.some((id) => id.toString() === store)) {
+      filter.store = store;
+    }
 
     if (category) filter.category = category;
     if (isActive !== undefined) filter.isActive = isActive === "true";
-    if (store) filter.store = store;
     if (search) {
       const escapedSearch = escapeRegex(search);
       filter.$or = [
@@ -31,22 +52,18 @@ exports.getAllProducts = async (req, res) => {
 
     const products = await Product.find(filter).sort({ createdAt: 1 });
 
-    // Fetch store info for dynamic headers/mapping
-    const Store = require("../models/Store");
-    let storeDoc = await Store.findOne({ user: req.user._id });
-
-    // Fallback for MVP/Testing if no user mapping yet
-    if (!storeDoc) {
-      storeDoc = await Store.findOne();
-    }
+    // Identify which store to get headers from (requested store or first one)
+    const targetStore = store
+      ? userStores.find((s) => s._id.toString() === store)
+      : userStores[0];
 
     res.json({
       success: true,
       count: products.length,
       data: products,
       meta: {
-        headers: storeDoc?.sheetHeaders || [],
-        mapping: storeDoc?.columnMapping || {},
+        headers: targetStore?.sheetHeaders || [],
+        mapping: targetStore?.columnMapping || {},
       },
     });
   } catch (error) {
@@ -64,13 +81,19 @@ exports.getAllProducts = async (req, res) => {
  */
 exports.getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).populate("store");
     if (!product) {
       return res.status(404).json({
         success: false,
         message: "Product not found",
       });
     }
+
+    // Security Check
+    if (product.store?.user?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
     res.json({
       success: true,
       data: product,

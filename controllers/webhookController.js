@@ -42,25 +42,32 @@ const { Store, Product, Customer, Conversation, Order } = require("../models");
 exports.handleWebhook = async (req, res) => {
   const body = req.body;
 
-  if (body.object === "page") {
+  if (body.object === "page" || body.object === "instagram") {
     res.status(200).send("EVENT_RECEIVED");
 
     try {
       await Promise.all(
         body.entry.map(async (entry) => {
-          const pageId = entry.id; // Correct way to get Page ID in webhook entries
+          const sourceId = entry.id; // FB Page ID or IG Business ID
           const webhookEvent = entry.messaging[0];
           const senderPsid = webhookEvent.sender.id;
 
           console.log(
-            `📨 Message for Page: ${pageId} from Sender: ${senderPsid}`,
+            `📨 Message from ${body.object}: ${sourceId} from Sender: ${senderPsid}`,
           );
 
-          // 1. Find Store
-          let store = await Store.findOne({ facebookPageId: pageId });
+          // 1. Find Store by FB Page ID OR Instagram Business ID
+          let store = await Store.findOne({
+            $or: [
+              { facebookPageId: sourceId },
+              { instagramBusinessId: sourceId },
+            ],
+          });
 
           if (!store) {
-            console.error(`❌ Store not found for Page ID: ${pageId}`);
+            console.error(
+              `❌ Store not found for ${body.object} ID: ${sourceId}`,
+            );
             return;
           }
 
@@ -119,6 +126,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       if (!conversation) {
         conversation = new Conversation({
           customer: customer._id,
+          store: store._id, // Link to current store
           facebookConversationId: senderPsid,
           currentIntent: "browsing",
         });
@@ -217,6 +225,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         const replyText = await aiService.generateResponse(
           aiResult,
           messageText,
+          store,
           order,
         );
         response = { text: replyText };
@@ -225,6 +234,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         const replyText = await aiService.generateResponse(
           aiResult,
           messageText,
+          store,
         );
         response = { text: replyText };
 

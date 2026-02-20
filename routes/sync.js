@@ -11,7 +11,7 @@ router.use(protect);
  */
 router.post("/products", syncController.syncProducts);
 router.post("/verify", syncController.verifySheet);
-router.post("/analyze", syncController.analyzeSheet);
+router.post("/analyze-sheet", syncController.analyzeSheet);
 
 /**
  * POST /api/sync/verify

@@ -13,19 +13,25 @@ exports.syncProducts = async (req, res) => {
   try {
     const { storeId, sheetId } = req.body;
 
-    // 1. Find the store
-    let store;
-    if (storeId) {
-      store = await Store.findById(storeId);
-    } else {
-      // Fallback to first store for MVP/testing
-      store = await Store.findOne();
+    // 1. Find and Verify the store
+    if (!storeId) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Store ID is required for synchronization",
+        });
     }
+
+    const store = await Store.findOne({ _id: storeId, user: req.user._id });
 
     if (!store) {
       return res
         .status(404)
-        .json({ success: false, message: "Store not found" });
+        .json({
+          success: false,
+          message: "Дэлгүүр олдсонгүй эсвэл танд хандах эрх байхгүй байна",
+        });
     }
 
     const targetSheetId = sheetId || store.googleSheetId;

@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema({
   sender: {
     type: String,
-    enum: ['customer', 'bot', 'admin'],
+    enum: ["customer", "bot", "admin"],
     required: true,
   },
   text: {
@@ -24,7 +24,13 @@ const conversationSchema = new mongoose.Schema(
     // Customer reference
     customer: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Customer',
+      ref: "Customer",
+      required: true,
+      index: true,
+    },
+    store: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
       required: true,
       index: true,
     },
@@ -40,20 +46,20 @@ const conversationSchema = new mongoose.Schema(
     // Conversation status
     status: {
       type: String,
-      enum: ['active', 'waiting_for_info', 'order_created', 'closed'],
-      default: 'active',
+      enum: ["active", "waiting_for_info", "order_created", "closed"],
+      default: "active",
     },
     // Current intent detection
     currentIntent: {
       type: String,
-      enum: ['browsing', 'ordering', 'inquiry', 'complaint', 'other'],
-      default: 'browsing',
+      enum: ["browsing", "ordering", "inquiry", "complaint", "other"],
+      default: "browsing",
     },
     // Related orders
     orders: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Order',
+        ref: "Order",
       },
     ],
     // Last activity
@@ -69,7 +75,7 @@ const conversationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Update last activity on message add
@@ -82,6 +88,6 @@ conversationSchema.methods.addMessage = function (sender, text, metadata = {}) {
 // Index for active conversations
 conversationSchema.index({ status: 1, lastActivity: -1 });
 
-const Conversation = mongoose.model('Conversation', conversationSchema);
+const Conversation = mongoose.model("Conversation", conversationSchema);
 
 module.exports = Conversation;

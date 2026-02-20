@@ -13,15 +13,22 @@ const storeSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    logoUrl: {
+      type: String,
+    },
     // Facebook Integration
     facebookPageId: {
       type: String,
       required: true,
-      unique: true,
+      index: true,
     },
     facebookPageToken: {
       type: String,
       required: true,
+    },
+    instagramBusinessId: {
+      type: String,
+      index: true,
     },
     // Google Sheets Integration
     googleSheetId: {

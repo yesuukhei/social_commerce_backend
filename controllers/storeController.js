@@ -1,5 +1,165 @@
+/**
+ * Get all stores for the current user
+ * GET /api/stores/my
+ */
+exports.getMyStores = async (req, res) => {
+  try {
+    const stores = await Store.find({ user: req.user._id });
+    res.json({ success: true, data: stores });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Create a new store
+ * POST /api/stores
+ */
+exports.createStore = async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Дэлгүүрийн нэр шаардлагатай" });
+    }
+
+    const store = await Store.create({
+      user: req.user._id,
+      name,
+      facebookPageId: "pending",
+      facebookPageToken: "pending",
+    });
+
+    res.status(201).json({ success: true, data: store });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const axios = require("axios");
 const googleSheetsService = require("../services/googleSheetsService");
 const { Store } = require("../models");
+
+/**
+ * Get available Facebook Pages for a user
+ * POST /api/stores/facebook/pages
+ */
+exports.getFacebookPages = async (req, res) => {
+  try {
+    const { userAccessToken } = req.body;
+
+    if (!userAccessToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User Access Token is required" });
+    }
+
+    // Fetch pages from Facebook Graph API
+    const response = await axios.get(
+      `https://graph.facebook.com/v19.0/me/accounts`,
+      {
+        params: {
+          access_token: userAccessToken,
+          fields:
+            "name,id,access_token,category,picture,instagram_business_account",
+        },
+      },
+    );
+
+    res.json({ success: true, data: response.data.data });
+  } catch (error) {
+    console.error(
+      "❌ Get FB Pages Error:",
+      error.response?.data || error.message,
+    );
+    res.status(500).json({
+      success: false,
+      message: "Facebook-ээс мэдээлэл авахад алдаа гарлаа",
+    });
+  }
+};
+
+/**
+ * Connect a specific Facebook Page to a store
+ * POST /api/stores/facebook/connect
+ */
+exports.connectFacebookPage = async (req, res) => {
+  try {
+    const { pageId, pageAccessToken, pageName, logoUrl, instagramBusinessId } =
+      req.body;
+
+    if (!pageId || !pageAccessToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Page ID and Token are required" });
+    }
+
+    // 1. Check if MUST update an existing store or CREATE a new one
+    // Logic: Find store by facebookPageId OR create new
+    let store = await Store.findOne({
+      facebookPageId: pageId,
+      user: req.user._id,
+    });
+
+    if (store) {
+      // Update existing
+      store.facebookPageToken = pageAccessToken;
+      store.name = pageName || store.name;
+      store.logoUrl = logoUrl || store.logoUrl;
+      store.instagramBusinessId =
+        instagramBusinessId || store.instagramBusinessId;
+      await store.save();
+    } else {
+      // Create new store from Facebook Page
+      store = await Store.create({
+        user: req.user._id,
+        name: pageName || "Шинэ дэлгүүр",
+        logoUrl: logoUrl || "",
+        facebookPageId: pageId,
+        facebookPageToken: pageAccessToken,
+        instagramBusinessId: instagramBusinessId || null,
+      });
+    }
+
+    // Senior Automation: Automatically subscribe the page to our app's webhooks
+    try {
+      console.log(`📡 Subscribing Page ${pageId} to webhooks...`);
+      await axios.post(
+        `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps`,
+        {
+          subscribed_fields: [
+            "messages",
+            "messaging_postbacks",
+            "messaging_optins",
+            "message_deliveries",
+            "messaging_referrals",
+          ],
+        },
+        {
+          params: { access_token: pageAccessToken },
+        },
+      );
+      console.log(`✅ Page ${pageId} successfully subscribed to webhooks.`);
+    } catch (fbErr) {
+      console.error(
+        "⚠️ Auto-subscription failed:",
+        fbErr.response?.data || fbErr.message,
+      );
+      // We don't block the whole process if this fails, but log it
+    }
+
+    res.json({
+      success: true,
+      message: "Facebook хуудас амжилттай холбогдлоо",
+      data: store,
+    });
+  } catch (error) {
+    console.error("❌ Connect FB Page Error:", error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 /**
  * Configure Google Sheet for a store
@@ -26,17 +186,18 @@ exports.configureSheet = async (req, res) => {
       return res.status(400).json(verification);
     }
 
-    // 2. Update Store
-    const store = await Store.findByIdAndUpdate(
-      id,
+    // 2. Update Store (with Ownership check)
+    const store = await Store.findOneAndUpdate(
+      { _id: id, user: req.user._id },
       { googleSheetId: sheetId },
       { new: true },
     );
 
     if (!store) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Дэлгүүр олдсонгүй" });
+      return res.status(404).json({
+        success: false,
+        message: "Дэлгүүр олдсонгүй эсвэл хандах эрхгүй байна",
+      });
     }
 
     // 3. Initial Sync (Optional but recommended for UX)
@@ -65,20 +226,33 @@ exports.configureSheet = async (req, res) => {
 };
 
 /**
- * Get settings for the default store
+ * Get settings for the user's primary store
  * GET /api/stores/settings
  */
 exports.getSettings = async (req, res) => {
   try {
-    let store = await Store.findOne();
+    const { storeId } = req.query;
+
+    // Find specific store or the default one for this user
+    const filter = { user: req.user._id };
+    if (storeId) filter._id = storeId;
+
+    let store = await Store.findOne(filter);
+
+    if (!store && !storeId) {
+      // Create a default store for this user if absolutely none exists
+      store = await Store.create({
+        user: req.user._id,
+        name: `${req.user.name}-ийн дэлгүүр`,
+        facebookPageId: "pending",
+        facebookPageToken: "pending",
+      });
+    }
 
     if (!store) {
-      // Create a default store if none exists
-      store = await Store.create({
-        name: "My Story",
-        facebookPageId: "default",
-        facebookPageToken: "default",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Дэлгүүр олдсонгүй" });
     }
 
     return res.status(200).json({
@@ -103,21 +277,27 @@ exports.getSettings = async (req, res) => {
 };
 
 /**
- * Update settings for the default store
+ * Update settings for the user's store
  * PATCH /api/stores/settings
  */
 exports.updateSettings = async (req, res) => {
   try {
-    const { customInstructions, sheetUrl } = req.body;
-    let store = await Store.findOne();
+    const { customInstructions, sheetUrl, storeId, name } = req.body;
+
+    // Find store by user and optionally by ID (if provided for multi-store)
+    const filter = { user: req.user._id };
+    if (storeId) filter._id = storeId;
+
+    let store = await Store.findOne(filter);
 
     if (!store) {
       return res
         .status(404)
-        .json({ success: false, message: "Store not found" });
+        .json({ success: false, message: "Дэлгүүр олдсонгүй" });
     }
 
     const updateData = {};
+    if (name) updateData.name = name;
     if (customInstructions !== undefined)
       updateData.customInstructions = customInstructions;
 
@@ -141,6 +321,16 @@ exports.updateSettings = async (req, res) => {
     }
 
     store = await Store.findByIdAndUpdate(store._id, updateData, { new: true });
+
+    // Trigger background sync if sheet or mapping was updated
+    if (updateData.googleSheetId || updateData.columnMapping) {
+      console.log(`🔄 Triggering automated sync for ${store.name}...`);
+      googleSheetsService
+        .syncProductsFromSheet(store._id, store.googleSheetId)
+        .catch((err) => {
+          console.error("Automated sync failed:", err.message);
+        });
+    }
 
     return res.status(200).json({
       success: true,

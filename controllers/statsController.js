@@ -8,9 +8,45 @@ exports.getStats = async (req, res) => {
   try {
     const { storeId } = req.query;
 
-    // For MVP, if no storeId, use the first one
-    let query = {};
-    if (storeId) {
+    // 1. Get all stores owned by this user
+    const Store = require("../models/Store");
+    const userStores = await Store.find({ user: req.user._id }).select("_id");
+    const storeIds = userStores.map((s) => s._id);
+
+    if (storeIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          stats: [
+            {
+              label: "Нийт борлуулалт",
+              value: "₮0",
+              icon: "payments",
+              trend: 0,
+            },
+            {
+              label: "Амжилттай захиалга",
+              value: "0",
+              icon: "check_circle",
+              trend: 0,
+            },
+            {
+              label: "Хүлээгдэж буй",
+              value: "0",
+              icon: "pending_actions",
+              trend: 0,
+              color: "amber",
+            },
+            { label: "Шинэ хэрэглэгч", value: "0", icon: "group", trend: 0 },
+          ],
+          recentOrders: [],
+        },
+      });
+    }
+
+    // Prepare query: filtered by user's stores, or a specific store if owned
+    let query = { store: { $in: storeIds } };
+    if (storeId && storeIds.includes(storeId)) {
       query.store = storeId;
     }
 
