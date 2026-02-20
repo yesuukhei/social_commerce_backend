@@ -72,6 +72,11 @@ const conversationSchema = new mongoose.Schema(
     aiContext: {
       type: mongoose.Schema.Types.Mixed,
     },
+    // Manual Mode (AI Paused)
+    isManualMode: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

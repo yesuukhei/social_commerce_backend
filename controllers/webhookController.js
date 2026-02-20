@@ -135,6 +135,12 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       const history = conversation.messages.slice(-5);
       await conversation.addMessage("customer", messageText);
 
+      // Senior UX: If manual mode is ON, we don't let AI respond
+      if (conversation.isManualMode) {
+        console.log(`👤 Manual Mode is ON for ${senderPsid}. AI skipping...`);
+        return;
+      }
+
       await messengerService.sendTypingIndicator(
         senderPsid,
         true,

@@ -128,6 +128,44 @@ exports.updateStatus = async (req, res) => {
 };
 
 /**
+ * PATCH /api/conversations/:id/toggle-manual
+ * Toggle AI Manual Mode
+ */
+exports.toggleManualMode = async (req, res) => {
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation)
+      return res.status(404).json({ success: false, message: "Not found" });
+
+    // Check ownership
+    const store = await Store.findOne({
+      _id: conversation.store,
+      user: req.user._id,
+    });
+    if (!store)
+      return res.status(403).json({ success: false, message: "Denied" });
+
+    conversation.isManualMode = !conversation.isManualMode;
+    // If we turned manual mode ON, we might want to change status to active to ensure it's seen
+    if (conversation.isManualMode) {
+      conversation.status = "active";
+    }
+
+    await conversation.save();
+
+    res.json({
+      success: true,
+      isManualMode: conversation.isManualMode,
+      message: conversation.isManualMode
+        ? "AI түр зогсоолоо"
+        : "AI ажиллаж байна",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * POST /api/conversations/:id/message
  * Send a manual message from Admin to Customer via Facebook Page
  */
