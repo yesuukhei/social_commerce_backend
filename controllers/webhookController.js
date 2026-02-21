@@ -182,9 +182,15 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
 
       let populatedOrder; // Declare here so it is accessible outside the if block
 
+      // Safety check: if AI extracted all data but forgot to set isOrderReady to true
+      const hasEssentialData =
+        aiResult.data?.items?.length > 0 &&
+        aiResult.data?.phone &&
+        aiResult.data?.full_address;
+
       if (
         aiResult.intent === "ordering" &&
-        aiResult.isOrderReady &&
+        (aiResult.isOrderReady || hasEssentialData) &&
         (aiResult.confidence || 1) > 0.6
       ) {
         const orderData = {

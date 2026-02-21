@@ -58,7 +58,7 @@ ${orderHistory.map((o) => `- ID: ${o._id.toString().slice(-4)}, Status: ${o.stat
 JSON БҮТЭЦ:
 {
   "intent": "browsing" | "inquiry" | "ordering" | "order_status",
-  "isOrderReady": boolean, (items, phone, address бүрэн бол true),
+  "isOrderReady": boolean, (Хэрэв data дотор барааны нэр/тоо, утас, хаяг (дүүрэг байсан ч болно) бүгд байвал заавал true болго),
   "data": {
     "items": [{ "name": string, "quantity": number, "price": number }],
     "phone": string,
