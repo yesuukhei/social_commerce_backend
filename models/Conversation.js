@@ -52,7 +52,14 @@ const conversationSchema = new mongoose.Schema(
     // Current intent detection
     currentIntent: {
       type: String,
-      enum: ["browsing", "ordering", "inquiry", "complaint", "other"],
+      enum: [
+        "browsing",
+        "ordering",
+        "inquiry",
+        "complaint",
+        "other",
+        "order_status",
+      ],
       default: "browsing",
     },
     // Related orders

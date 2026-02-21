@@ -5,9 +5,41 @@ const { JWT } = require("google-auth-library");
  * Service to handle Google Sheets operations
  */
 class GoogleSheetsService {
-  constructor() {
-    this.doc = null;
-    this.initialized = false;
+  /**
+   * Internal helper to get a fully initialized Google Spreadsheet instance
+   * This is now "Stateless" to prevent race conditions
+   * @param {string} sheetId
+   */
+  async getDoc(sheetId = null) {
+    try {
+      const spreadsheetId = sheetId || process.env.GOOGLE_SHEET_ID;
+      const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+
+      if (!serviceAccountEmail || !privateKey || !spreadsheetId) {
+        throw new Error("Google Sheets credentials or Spreadsheet ID missing");
+      }
+
+      // Robust decoding
+      privateKey = privateKey.replace(/^"|"$/g, "").split("\\n").join("\n");
+      if (!privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+        privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+      }
+
+      const auth = new JWT({
+        email: serviceAccountEmail,
+        key: privateKey,
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
+
+      const doc = new GoogleSpreadsheet(spreadsheetId, auth);
+      await doc.loadInfo();
+
+      return doc;
+    } catch (error) {
+      console.error("❌ Google Sheets Connection Error:", error.message);
+      throw error;
+    }
   }
 
   /**
@@ -24,19 +56,18 @@ class GoogleSheetsService {
    */
   async verifySheetAccess(sheetId) {
     try {
-      await this.init(sheetId);
-      if (!this.initialized) throw new Error("Could not initialize connection");
+      const doc = await this.getDoc(sheetId);
 
       const productsSheet =
-        this.doc.sheetsByTitle["Products"] ||
-        this.doc.sheetsByTitle["Бараа"] ||
-        this.doc.sheetsByIndex[0];
+        doc.sheetsByTitle["Products"] ||
+        doc.sheetsByTitle["Бараа"] ||
+        doc.sheetsByIndex[0];
 
       await productsSheet.loadHeaderRow();
 
       return {
         success: true,
-        title: this.doc.title,
+        title: doc.title,
         sheetName: productsSheet.title,
         headers: productsSheet.headerValues,
         rowCount: productsSheet.rowCount,
@@ -53,73 +84,18 @@ class GoogleSheetsService {
   }
 
   /**
-   * Initialize the Google Spreadsheet connection
-   * @param {string} sheetId - Optional specific sheet ID to load
-   */
-  async init(sheetId = null, forceRefresh = false) {
-    try {
-      const spreadsheetId = sheetId || process.env.GOOGLE_SHEET_ID;
-
-      // If already initialized with this sheet, skip unless forced
-      if (
-        this.initialized &&
-        this.doc?.spreadsheetId === spreadsheetId &&
-        !forceRefresh
-      )
-        return;
-
-      const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
-
-      if (!serviceAccountEmail || !privateKey || !spreadsheetId) {
-        console.warn("⚠️ Google Sheets credentials missing");
-        return;
-      }
-
-      // Robust decoding for .env or direct environment variables
-      try {
-        // Remove literal quotes and convert \n to real newlines
-        privateKey = privateKey.replace(/^"|"$/g, "").split("\\n").join("\n");
-
-        // Ensure the headers are clean
-        if (!privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
-          privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
-        }
-      } catch (e) {
-        console.error("Error formatting private key:", e.message);
-      }
-
-      const auth = new JWT({
-        email: serviceAccountEmail,
-        key: privateKey,
-        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-      });
-
-      this.doc = new GoogleSpreadsheet(spreadsheetId, auth);
-      await this.doc.loadInfo();
-
-      console.log(`✅ Connected to Google Sheet: ${this.doc.title}`);
-      this.initialized = true;
-    } catch (error) {
-      console.error("❌ Google Sheets Init Error:", error.message);
-      this.initialized = false;
-    }
-  }
-
-  /**
    * Analyze sheet structure using AI to map unknown headers
    * @param {string} sheetId
    * @returns {Object} Header mapping
    */
   async analyzeSheetStructure(sheetId = null) {
-    await this.init(sheetId);
-    if (!this.initialized) throw new Error("Google Sheets not initialized");
+    const doc = await this.getDoc(sheetId);
 
     let sheet =
-      this.doc.sheetsByTitle["Products"] ||
-      this.doc.sheetsByTitle["Бараа"] ||
-      this.doc.sheetsByTitle["Бүтээгдэхүүн"] ||
-      this.doc.sheetsByIndex[0];
+      doc.sheetsByTitle["Products"] ||
+      doc.sheetsByTitle["Бараа"] ||
+      doc.sheetsByTitle["Бүтээгдэхүүн"] ||
+      doc.sheetsByIndex[0];
     await sheet.loadHeaderRow();
     const headers = sheet.headerValues;
 
@@ -135,8 +111,8 @@ class GoogleSheetsService {
     const mapping = await aiService.mapSheetHeaders(headers, sampleData);
 
     return {
-      sheetId: sheet.spreadsheetId,
-      sheetTitle: sheet.title,
+      sheetId: doc.spreadsheetId,
+      sheetTitle: doc.title,
       headers,
       mapping,
     };
@@ -149,10 +125,8 @@ class GoogleSheetsService {
    */
   async appendOrder(order, sheetId = null) {
     try {
-      await this.init(sheetId);
-      if (!this.initialized) return;
-
-      const sheet = this.doc.sheetsByIndex[0]; // Assumes first sheet
+      const doc = await this.getDoc(sheetId);
+      const sheet = doc.sheetsByIndex[0]; // Assumes first sheet
 
       // Load the header row to verify
       await sheet.loadHeaderRow();
@@ -199,21 +173,28 @@ class GoogleSheetsService {
       const Product = require("../models/Product");
       const { Store } = require("../models");
 
-      await this.init(sheetId, true); // Force refresh to see new columns/headers
-      if (!this.initialized) throw new Error("Google Sheets not initialized");
+      const doc = await this.getDoc(sheetId);
 
       // Fetch the store to get its column mapping
       const store = await Store.findById(storeId);
       const mapping = store?.columnMapping || {};
 
       let sheet =
-        this.doc.sheetsByTitle["Products"] ||
-        this.doc.sheetsByTitle["Бараа"] ||
-        this.doc.sheetsByIndex[0];
+        doc.sheetsByTitle["Products"] ||
+        doc.sheetsByTitle["Бараа"] ||
+        doc.sheetsByIndex[0];
 
-      const rows = await sheet.getRows();
+      const allRows = await sheet.getRows();
+
+      // Senior UX & Performance Fix: Filter out logically empty rows (no identity)
+      const nameCol = mapping.name || "Нэр";
+      const rows = allRows.filter((row) => {
+        const name = row.get(nameCol);
+        return name && String(name).trim() !== "";
+      });
+
       console.log(
-        `🔄 Syncing ${rows.length} rows from sheet: ${sheet.title} using AI Mapping`,
+        `🔄 Found ${allRows.length} raw rows. Syncing ${rows.length} valid products from sheet: ${sheet.title}`,
       );
 
       let successCount = 0;
@@ -236,18 +217,12 @@ class GoogleSheetsService {
       for (const row of rows) {
         try {
           // Use Mapping if available, else fallback to defaults
-          const nameCol = mapping.name || "Нэр";
           const priceCol = mapping.price || "Үнэ";
           const stockCol = mapping.stock || "Үлдэгдэл";
-          const catCol = mapping.category || "Төрөл";
-
+          const catCol = mapping.category; // Optional now
           const name = row.get(nameCol);
-          if (!name || String(name).trim() === "") continue;
-
           const trimmedName = String(name).trim();
-          const category = String(
-            row.get(catCol) || row.get("Category") || "",
-          ).trim();
+          const category = catCol ? String(row.get(catCol) || "").trim() : "";
 
           // Composite key to allow same name in different categories
           const productKey = `${trimmedName}-${category}`;
@@ -385,13 +360,11 @@ class GoogleSheetsService {
    */
   async getProductsFromSheet(sheetId) {
     try {
-      await this.init(sheetId);
-      if (!this.initialized) return [];
-
-      let sheet =
-        this.doc.sheetsByTitle["Products"] ||
-        this.doc.sheetsByTitle["Бараа"] ||
-        this.doc.sheetsByIndex[0];
+      const doc = await this.getDoc(sheetId);
+      const sheet =
+        doc.sheetsByTitle["Products"] ||
+        doc.sheetsByTitle["Бараа"] ||
+        doc.sheetsByIndex[0];
 
       const rows = await sheet.getRows();
 

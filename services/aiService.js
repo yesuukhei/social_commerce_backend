@@ -28,6 +28,26 @@ const buildHistoryContext = (history = []) => {
     .join("\n");
 };
 
+const buildBusinessRulesContext = (settings = {}) => {
+  const delivery = settings.hasDelivery
+    ? `ХҮРГЭЛТ: Тийм (Үнэ: ₮${(settings.deliveryFee || 0).toLocaleString()}, Хугацаа: ${settings.deliveryTime || "Тодорхойгүй"})`
+    : `ХҮРГЭЛТ: Үгүй (Очиж авах хаяг: ${settings.pickupAddress || "Тодорхойгүй"})`;
+
+  let payment = "";
+  if (settings.paymentMethod === "manual" || !settings.paymentMethod) {
+    const bank = settings.paymentDetails;
+    payment = `ТӨЛБӨР (Дансаар): ${bank?.bankName || ""} [${bank?.accountNumber || ""}]${bank?.iban ? ` (IBAN: ${bank.iban})` : ""} - ${bank?.accountHolder || ""}\n!!! ЧУХАЛ: Гүйлгээний утга дээр УТАСНЫ ДУГААРАА заавал бичихийг сануул !!!`;
+  } else if (settings.paymentMethod === "hub_qpay") {
+    payment = `ТӨЛБӨР: QPay QR код үүсгэх боломжтой. (Автомат баталгаажуулалттай)`;
+  } else if (settings.paymentMethod === "cash") {
+    payment = `ТӨЛБӨР: Бэлнээр (Хүргэлтээр очих үед эсвэл очиж авахдаа бэлнээр төлж болно).`;
+  } else {
+    payment = `ТӨЛБӨР: Дэлгүүрийн QPay холбогдсон.`;
+  }
+
+  return `${delivery}\n${payment}`;
+};
+
 /**
  * Senior Product & UX Perspective:
  * The AI should have a "Soul" (personality) and a "Brain" (extraction).
@@ -38,6 +58,7 @@ exports.processMessage = async (
   catalog = [],
   storeSettings = {},
   orderHistory = [],
+  conversationStatus = "active",
 ) => {
   try {
     const catalogData = buildCatalogContext(catalog);
@@ -46,6 +67,8 @@ exports.processMessage = async (
     const systemPrompt = `
 Чи бол Монголын онлайн дэлгүүрийн ухаалаг туслах юм.
 ЗАН ТӨЛӨВ: ${storeSettings.customInstructions || "Найрсаг, тусламтгай."}
+ОДООГИЙН ХАРИЛЦААНЫ ТӨЛӨВ: "${conversationStatus}"
+(Хэрэв төлөв "order_created" байвал саяхан захиалга үүссэн гэсэн үг. Хэрэглэгч зүгээр л "за", "баярлалаа" гэвэл "ordering" биш "other" эсвэл "order_status" гэж ойлгож, дахин шинэ захиалга БҮҮ үүсгэ!)
 
 ҮҮРЭГ: Хэрэглэгчийн мессежнээс Intent болон Data-г задлан авч JSON-оор хариул.
 
@@ -55,10 +78,13 @@ ${catalogData}
 ЗАХИАЛГЫН ТҮҮХ:
 ${orderHistory.map((o) => `- ID: ${o._id.toString().slice(-4)}, Status: ${o.status}`).join("\n") || "Байхгүй"}
 
+БИЗНЕС ДҮРЭМ:
+${buildBusinessRulesContext(storeSettings)}
+
 JSON БҮТЭЦ:
 {
   "intent": "browsing" | "inquiry" | "ordering" | "order_status",
-  "isOrderReady": boolean, (Хэрэв data дотор барааны нэр/тоо, утас, хаяг (дүүрэг байсан ч болно) бүгд байвал заавал true болго),
+  "isOrderReady": boolean, (Хэрэв data дотор барааны нэр/тоо, утас${storeSettings.hasDelivery !== false ? ", хаяг (дүүрэг байсан ч болно)" : ""} бүгд байвал заавал true болго),
   "data": {
     "items": [{ "name": string, "quantity": number, "price": number }],
     "phone": string,
@@ -116,7 +142,9 @@ exports.generateResponse = async (
 1. Захиалга баталгаажсан бол (Data: ${orderConf}) баярлалаа гээд дүнг нь хэл.
 2. Мэдээлэл дутуу бол (@missingFields: ${aiResult.missingFields?.join(", ")}) эелдэгээр асуу.
 3. Бараа дууссан бол catalog үзээд өөр зүйл санал болго.
-4. Хэтэрхий "Робот" шиг битгий ярь.`;
+4. Хүргэлт болон төлбөрийн мэдээллийг дараах дүрмийн дагуу өг:
+${buildBusinessRulesContext(storeSettings)}
+5. Хэтэрхий "Робот" шиг битгий ярь.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -146,7 +174,7 @@ exports.validatePhoneNumber = (phone) => {
 
 exports.mapSheetHeaders = async (headers, sampleRows) => {
   try {
-    const prompt = `Map these sheet headers to: name, price, stock, category, description.
+    const prompt = `Map these sheet headers to: name, price, stock.
 Headers: ${JSON.stringify(headers)}
 Samples: ${JSON.stringify(sampleRows)}
 Return JSON: { "mapping": { "standard_key": "sheet_header" }, "confidence": number }`;

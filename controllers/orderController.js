@@ -10,8 +10,14 @@ const googleSheetsService = require("../services/googleSheetsService");
  */
 exports.getAllOrders = async (req, res, next) => {
   try {
-    const { status, customerId, storeId, page = 1, limit = 20 } = req.query;
-    console.log(`📦 Fetching orders: storeId=${storeId}, user=${req.user._id}`);
+    const {
+      status,
+      customerId,
+      storeId,
+      search,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
     // 1. Only show orders from stores belonging to this user
     const userStores = await Store.find({ user: req.user._id }).select("_id");
@@ -49,7 +55,14 @@ exports.getAllOrders = async (req, res, next) => {
     if (status) query.status = status;
     if (customerId) query.customer = customerId;
 
-    console.log("🔍 Order Query:", JSON.stringify(query));
+    if (search) {
+      // Find customers matching the search name
+      const matchingCustomers = await Customer.find({
+        name: { $regex: search, $options: "i" },
+      }).select("_id");
+      const customerIdsList = matchingCustomers.map((c) => c._id);
+      query.customer = { $in: customerIdsList };
+    }
 
     const orders = await Order.find(query)
       .populate("customer", "name facebookId avatar")
@@ -60,7 +73,6 @@ exports.getAllOrders = async (req, res, next) => {
       .exec();
 
     const count = await Order.countDocuments(query);
-    console.log(`✅ Found ${orders.length} orders (Total: ${count})`);
 
     res.json({
       success: true,
@@ -81,6 +93,12 @@ exports.getAllOrders = async (req, res, next) => {
  */
 exports.getOrderById = async (req, res, next) => {
   try {
+    if (!require("mongoose").Types.ObjectId.isValid(req.params.id)) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Захиалга олдсонгүй (Invalid ID)" });
+    }
+
     const order = await Order.findById(req.params.id)
       .populate("customer")
       .populate("store")

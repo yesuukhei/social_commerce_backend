@@ -172,6 +172,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         catalog,
         store,
         orderHistory,
+        conversation.status,
       );
       console.log(
         `🤖 AI Analysis [${store.name}]:`,
@@ -183,14 +184,10 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       let populatedOrder; // Declare here so it is accessible outside the if block
 
       // Safety check: if AI extracted all data but forgot to set isOrderReady to true
-      const hasEssentialData =
-        aiResult.data?.items?.length > 0 &&
-        aiResult.data?.phone &&
-        aiResult.data?.full_address;
 
       if (
         aiResult.intent === "ordering" &&
-        (aiResult.isOrderReady || hasEssentialData) &&
+        aiResult.isOrderReady &&
         (aiResult.confidence || 1) > 0.6
       ) {
         const orderData = {
@@ -243,6 +240,15 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         }
 
         await order.save();
+
+        // Real-time Notification for Admin
+        io.emit("order-created", {
+          orderId: order._id,
+          customerName: customer.name,
+          totalAmount: order.totalAmount,
+          storeId: store._id,
+          storeName: store.name,
+        });
 
         // Link order to conversation for UI recap
         conversation.orders.push(order._id);

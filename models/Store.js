@@ -62,6 +62,25 @@ const storeSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    deliveryFee: {
+      type: Number,
+      default: 0,
+    },
+    deliveryTime: {
+      type: String,
+      default: "",
+    },
+    paymentDetails: {
+      bankName: { type: String, default: "" },
+      accountNumber: { type: String, default: "" },
+      accountHolder: { type: String, default: "" },
+      iban: { type: String, default: "" },
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["manual", "direct_qpay", "hub_qpay", "cash"],
+      default: "manual",
+    },
     isActive: {
       type: Boolean,
       default: true,

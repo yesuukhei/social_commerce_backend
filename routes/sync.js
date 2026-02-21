@@ -13,10 +13,4 @@ router.post("/products", syncController.syncProducts);
 router.post("/verify", syncController.verifySheet);
 router.post("/analyze-sheet", syncController.analyzeSheet);
 
-/**
- * POST /api/sync/verify
- * Verify access and structure of a Google Sheet without saving
- */
-router.post("/verify", syncController.verifySheet);
-
 module.exports = router;

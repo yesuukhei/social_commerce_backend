@@ -6,12 +6,12 @@ const { Order, Customer } = require("../models");
  */
 exports.getStats = async (req, res) => {
   try {
-    const { storeId } = req.query;
+    const { storeId, startDate, endDate } = req.query;
 
     // 1. Get all stores owned by this user
     const Store = require("../models/Store");
     const userStores = await Store.find({ user: req.user._id }).select("_id");
-    const storeIds = userStores.map((s) => s._id);
+    const storeIds = userStores.map((s) => s._id.toString());
 
     if (storeIds.length === 0) {
       return res.status(200).json({
@@ -22,24 +22,22 @@ exports.getStats = async (req, res) => {
               label: "Нийт борлуулалт",
               value: "₮0",
               icon: "payments",
-              trend: 0,
             },
             {
               label: "Амжилттай захиалга",
               value: "0",
               icon: "check_circle",
-              trend: 0,
             },
             {
               label: "Хүлээгдэж буй",
               value: "0",
               icon: "pending_actions",
-              trend: 0,
               color: "amber",
             },
-            { label: "Шинэ хэрэглэгч", value: "0", icon: "group", trend: 0 },
+            { label: "Шинэ хэрэглэгч", value: "0", icon: "group" },
           ],
           recentOrders: [],
+          productCount: "0",
         },
       });
     }
@@ -48,6 +46,17 @@ exports.getStats = async (req, res) => {
     let query = { store: { $in: storeIds } };
     if (storeId && storeIds.includes(storeId)) {
       query.store = storeId;
+    }
+
+    // Apply Date Range Filter
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Set to end of day
+        query.createdAt.$lte = end;
+      }
     }
 
     // 1. Total Sales & Order Count (Only completed orders count for revenue)
@@ -77,14 +86,29 @@ exports.getStats = async (req, res) => {
           100
         : 0;
 
-    // 3. New Customers (Last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const newCustomersCount = await Customer.countDocuments({
-      createdAt: { $gte: thirtyDaysAgo },
+    // 3. New Customers (Store-specific)
+    const Conversation = require("../models/Conversation");
+    let conversationQuery = { store: query.store };
+
+    if (startDate || endDate) {
+      conversationQuery.createdAt = { ...query.createdAt };
+    } else {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      conversationQuery.createdAt = { $gte: thirtyDaysAgo };
+    }
+
+    const newCustomersCount =
+      await Conversation.countDocuments(conversationQuery);
+
+    // 4. Product Count
+    const Product = require("../models/Product");
+    const productCount = await Product.countDocuments({
+      ...query,
+      isActive: true,
     });
 
-    // 4. Recent Orders (for the dashboard table)
+    // 5. Recent Orders (for the dashboard table)
     const recentOrders = await Order.find(query)
       .sort({ createdAt: -1 })
       .limit(5)
@@ -98,28 +122,25 @@ exports.getStats = async (req, res) => {
             label: "Нийт борлуулалт",
             value: `₮${totalSales.toLocaleString()}`,
             icon: "payments",
-            trend: 12.5,
           },
           {
             label: "Амжилттай захиалга",
             value: orderCount.toString(),
             icon: "check_circle",
-            trend: 8.2,
           },
           {
             label: "Хүлээгдэж буй",
             value: pendingOrdersCount.toString(),
             icon: "pending_actions",
-            trend: 0,
             color: "amber",
           },
           {
             label: "Шинэ хэрэглэгч",
             value: newCustomersCount.toString(),
             icon: "group",
-            trend: 5.4,
           },
         ],
+        productCount: productCount.toString(),
         recentOrders: recentOrders.map((o) => ({
           _id: o._id,
           id: o._id.toString().substring(0, 8),
