@@ -173,6 +173,10 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         store,
         orderHistory,
       );
+      console.log(
+        `🤖 AI Analysis [${store.name}]:`,
+        JSON.stringify(aiResult, null, 2),
+      );
 
       conversation.currentIntent = aiResult.intent || "browsing";
 
@@ -271,6 +275,8 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         conversationId: conversation._id,
         lastMessage: response.text,
         lastActivity: new Date(),
+        status: conversation.status,
+        storeId: store._id,
       });
       await messengerService.sendTypingIndicator(
         senderPsid,
