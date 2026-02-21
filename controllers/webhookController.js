@@ -185,7 +185,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       if (
         aiResult.intent === "ordering" &&
         aiResult.isOrderReady &&
-        aiResult.confidence > 0.6
+        (aiResult.confidence || 1) > 0.6
       ) {
         const orderData = {
           store: store._id, // Linked to current store

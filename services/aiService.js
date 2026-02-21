@@ -64,7 +64,8 @@ JSON БҮТЭЦ:
     "phone": string,
     "full_address": string
   },
-  "missingFields": string[] (Жишээ: ["phone", "address"])
+  "missingFields": string[],
+  "confidence": number (0-1 хооронд)
 }`;
 
     const completion = await openai.chat.completions.create({
