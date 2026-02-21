@@ -2,6 +2,7 @@ const messengerService = require("../services/messengerService");
 const aiService = require("../services/aiService");
 const googleSheetsService = require("../services/googleSheetsService");
 const paymentService = require("../services/paymentService");
+const { getIO } = require("../utils/socket");
 
 /**
  * Webhook Verification (GET request from Facebook)
@@ -133,7 +134,16 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       }
 
       const history = conversation.messages.slice(-5);
-      await conversation.addMessage("customer", messageText);
+      const newCustMsg = await conversation.addMessage("customer", messageText);
+
+      // Real-time Update
+      const io = getIO();
+      io.to(conversation._id.toString()).emit("new-message", newCustMsg);
+      io.emit("conversation-updated", {
+        conversationId: conversation._id,
+        lastMessage: messageText,
+        lastActivity: new Date(),
+      });
 
       // Senior UX: If manual mode is ON, we don't let AI respond
       if (conversation.isManualMode) {
@@ -222,7 +232,10 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
           }
         }
 
-        await order.save(); // This triggers the pre-save total calculation again but it's fine
+        await order.save();
+
+        // Link order to conversation for UI recap
+        conversation.orders.push(order._id);
         console.log(`✅ Order Draft created for ${store.name}: ${order._id}`);
 
         populatedOrder = await Order.findById(order._id).populate("customer");
@@ -250,7 +263,15 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       }
 
       await conversation.save();
-      await conversation.addMessage("bot", response.text);
+      const newBotMsg = await conversation.addMessage("bot", response.text);
+
+      // Real-time Update
+      io.to(conversation._id.toString()).emit("new-message", newBotMsg);
+      io.emit("conversation-updated", {
+        conversationId: conversation._id,
+        lastMessage: response.text,
+        lastActivity: new Date(),
+      });
       await messengerService.sendTypingIndicator(
         senderPsid,
         false,

@@ -7,6 +7,9 @@ const connectDB = require("./config/database");
 
 // Initialize Express app
 const app = express();
+const server = require("http").createServer(app);
+const io = require("./utils/socket").init(server);
+
 app.set("trust proxy", 1);
 
 // Connect to Database
@@ -80,7 +83,7 @@ app.use((req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(
     `🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`,
   );

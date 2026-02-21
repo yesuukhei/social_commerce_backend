@@ -1,4 +1,5 @@
 const { Conversation, Store } = require("../models");
+const { getIO } = require("../utils/socket");
 
 /**
  * GET /api/conversations
@@ -121,6 +122,12 @@ exports.updateStatus = async (req, res) => {
     conversation.status = status;
     await conversation.save();
 
+    // Real-time Update
+    getIO().emit("conversation-updated", {
+      conversationId: conversation._id,
+      status: conversation.status,
+    });
+
     res.json({ success: true, data: conversation });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -152,6 +159,13 @@ exports.toggleManualMode = async (req, res) => {
     }
 
     await conversation.save();
+
+    // Real-time Update
+    getIO().emit("conversation-updated", {
+      conversationId: conversation._id,
+      isManualMode: conversation.isManualMode,
+      status: conversation.status,
+    });
 
     res.json({
       success: true,
@@ -205,7 +219,16 @@ exports.sendAdminMessage = async (req, res) => {
     );
 
     // 4. Save message to local database history
-    await conversation.addMessage("admin", text);
+    const newMessage = await conversation.addMessage("admin", text);
+
+    // Real-time Update
+    const io = getIO();
+    io.to(conversationId).emit("new-message", newMessage);
+    io.emit("conversation-updated", {
+      conversationId,
+      lastMessage: text,
+      lastActivity: new Date(),
+    });
 
     res.json({
       success: true,

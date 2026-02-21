@@ -10,14 +10,17 @@ const googleSheetsService = require("../services/googleSheetsService");
  */
 exports.getAllOrders = async (req, res, next) => {
   try {
-    const { status, customerId, page = 1, limit = 20 } = req.query;
+    const { status, customerId, storeId, page = 1, limit = 20 } = req.query;
+    console.log(`📦 Fetching orders: storeId=${storeId}, user=${req.user._id}`);
 
     // 1. Only show orders from stores belonging to this user
     const userStores = await Store.find({ user: req.user._id }).select("_id");
-    const storeIds = userStores.map((s) => s._id);
+    const storeIds = userStores.map((s) => s._id.toString());
 
     if (storeIds.length === 0) {
+      console.log("⚠️ No stores found for user");
       return res.json({
+        success: true,
         orders: [],
         totalPages: 0,
         currentPage: page,
@@ -25,9 +28,28 @@ exports.getAllOrders = async (req, res, next) => {
       });
     }
 
-    const query = { store: { $in: storeIds } };
+    const query = {};
+
+    // Filter by specific store if requested and authorized
+    if (storeId) {
+      if (storeIds.includes(storeId)) {
+        query.store = storeId;
+      } else {
+        console.warn(
+          `🚫 Access denied: User ${req.user._id} does not own store ${storeId}`,
+        );
+        return res
+          .status(403)
+          .json({ success: false, message: "Access denied to this store" });
+      }
+    } else {
+      query.store = { $in: storeIds };
+    }
+
     if (status) query.status = status;
     if (customerId) query.customer = customerId;
+
+    console.log("🔍 Order Query:", JSON.stringify(query));
 
     const orders = await Order.find(query)
       .populate("customer", "name facebookId avatar")
@@ -38,6 +60,7 @@ exports.getAllOrders = async (req, res, next) => {
       .exec();
 
     const count = await Order.countDocuments(query);
+    console.log(`✅ Found ${orders.length} orders (Total: ${count})`);
 
     res.json({
       success: true,
