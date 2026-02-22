@@ -87,8 +87,14 @@ exports.getFacebookPages = async (req, res) => {
  */
 exports.connectFacebookPage = async (req, res) => {
   try {
-    const { pageId, pageAccessToken, pageName, logoUrl, instagramBusinessId } =
-      req.body;
+    const {
+      pageId,
+      pageAccessToken,
+      pageName,
+      logoUrl,
+      instagramBusinessId,
+      storeId,
+    } = req.body;
 
     if (!pageId || !pageAccessToken) {
       return res
@@ -96,23 +102,33 @@ exports.connectFacebookPage = async (req, res) => {
         .json({ success: false, message: "Page ID and Token are required" });
     }
 
-    // 1. Check if MUST update an existing store or CREATE a new one
-    // Logic: Find store by facebookPageId OR create new
+    // 1. Senior Logic: Look for the store by FB ID first
     let store = await Store.findOne({
       facebookPageId: pageId,
       user: req.user._id,
     });
 
+    if (!store && storeId) {
+      // 2. If not found by FB ID, check if we are updating the current 'pending' store
+      store = await Store.findOne({
+        _id: storeId,
+        user: req.user._id,
+        facebookPageId: "pending",
+      });
+    }
+
     if (store) {
-      // Update existing
+      // Update existing or "Pending" store
+      store.facebookPageId = pageId;
       store.facebookPageToken = pageAccessToken;
       store.name = pageName || store.name;
       store.logoUrl = logoUrl || store.logoUrl;
       store.instagramBusinessId =
         instagramBusinessId || store.instagramBusinessId;
       await store.save();
+      console.log(`✅ Store updated with FB Page: ${store.name}`);
     } else {
-      // Create new store from Facebook Page
+      // Create a completely new store
       store = await Store.create({
         user: req.user._id,
         name: pageName || "Шинэ дэлгүүр",
@@ -121,6 +137,7 @@ exports.connectFacebookPage = async (req, res) => {
         facebookPageToken: pageAccessToken,
         instagramBusinessId: instagramBusinessId || null,
       });
+      console.log(`🆕 Created new store from FB Page: ${store.name}`);
     }
 
     // Senior Automation: Automatically subscribe the page to our app's webhooks
