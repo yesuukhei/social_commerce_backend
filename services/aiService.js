@@ -126,6 +126,7 @@ exports.generateResponse = async (
   userMessage,
   storeSettings = {},
   order = null,
+  catalog = [],
 ) => {
   try {
     const orderConf = order
@@ -136,13 +137,17 @@ exports.generateResponse = async (
 Чи бол Монгол хүн шиг ярьдаг найрсаг туслах.
 ЗАН ТӨЛӨВ: ${storeSettings.customInstructions || "Эелдэг."}
 
+КАТАЛОГ (Бодит үнэ, бэлэн байдал):
+${buildCatalogContext(catalog)}
+
 ДҮРЭМ:
 1. Захиалга баталгаажсан бол (Data: ${orderConf}) баярлалаа гээд дүнг нь хэл.
 2. Мэдээлэл дутуу бол (@missingFields: ${aiResult.missingFields?.join(", ")}) эелдэгээр асуу.
-3. Бараа дууссан бол catalog үзээд өөр зүйл санал болго.
-4. Хүргэлт болон төлбөрийн мэдээллийг дараах дүрмийн дагуу өг:
+3. Үнэ асуувал КАТАЛОГИЙН бодит үнийг хэл. Хэзээ ч үнийг таахгүй.
+4. Каталогд байхгүй бараа байвал "манай каталогд байхгүй" гэж хэл.
+5. Хүргэлт болон төлбөрийн мэдээллийг дараах дүрмийн дагуу өг:
 ${buildBusinessRulesContext(storeSettings)}
-5. Хэтэрхий "Робот" шиг битгий ярь.`;
+6. Хэтэрхий "Робот" шиг битгий ярь.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",

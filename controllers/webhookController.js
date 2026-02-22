@@ -182,14 +182,95 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       conversation.currentIntent = aiResult.intent || "browsing";
 
       // Safety check: if AI extracted all data but forgot to set isOrderReady to true
+      if (aiResult.intent === "ordering" && !aiResult.isOrderReady) {
+        const hasItems = aiResult.data?.items?.length > 0;
+        const hasPhone = !!aiResult.data?.phone;
+        const needsAddress = store.hasDelivery !== false;
+        const hasAddress = !!aiResult.data?.full_address;
+        const allFieldsPresent =
+          hasItems && hasPhone && (!needsAddress || hasAddress);
+
+        if (allFieldsPresent) {
+          console.log(
+            `⚡ Safety override: forcing isOrderReady=true (AI had all data)`,
+          );
+          aiResult.isOrderReady = true;
+        }
+      }
 
       if (
         aiResult.intent === "ordering" &&
         aiResult.isOrderReady &&
         (aiResult.confidence || 1) > 0.6
       ) {
+        // ─── CATALOG VALIDATION & PRICE AUTO-FILL ───────────────────────
+        const validatedItems = [];
+        const unknownItems = [];
+
+        for (const item of aiResult.data.items) {
+          // Fuzzy match: find catalog product whose name overlaps with AI-extracted name
+          const match = catalog.find((p) => {
+            const catalogName = p.name.toLowerCase();
+            const aiName = (item.name || "").toLowerCase();
+            return (
+              catalogName.includes(aiName) ||
+              aiName.includes(catalogName) ||
+              aiName
+                .split(" ")
+                .some((word) => word.length > 2 && catalogName.includes(word))
+            );
+          });
+
+          if (!match) {
+            unknownItems.push(item.name);
+          } else {
+            validatedItems.push({
+              itemName: match.name, // Use canonical catalog name
+              quantity: item.quantity || 1,
+              price: match.price, // Always use catalog price — never trust AI price
+              productId: match._id,
+              attributes: item.attributes || {},
+            });
+          }
+        }
+
+        if (unknownItems.length > 0) {
+          // AI hallucinated a product not in catalog — abort order, ask AI to respond
+          console.log(
+            `⚠️  Unknown items (not in catalog): ${unknownItems.join(", ")}`,
+          );
+          aiResult.isOrderReady = false;
+          aiResult.missingFields = [
+            `Каталогд байхгүй бараа: ${unknownItems.join(", ")}`,
+          ];
+
+          const replyText = await aiService.generateResponse(
+            aiResult,
+            messageText,
+            store,
+            null,
+            catalog,
+          );
+          response = { text: replyText };
+          conversation.status = "active";
+          await conversation.save();
+
+          await messengerService.sendTypingIndicator(
+            senderPsid,
+            false,
+            store.facebookPageToken,
+          );
+          await messengerService.sendMessage(
+            senderPsid,
+            response,
+            store.facebookPageToken,
+          );
+          return;
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         const orderData = {
-          store: store._id, // Linked to current store
+          store: store._id,
           customer: customer._id,
           conversation: conversation._id,
           phoneNumber: aiResult.data.phone || "99999999",
@@ -198,12 +279,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
             : "Очиж авах",
           hasDelivery: store.hasDelivery,
           pickupAddress: store.pickupAddress,
-          items: aiResult.data.items.map((item) => ({
-            itemName: item.name || "Бараа",
-            quantity: item.quantity || 1,
-            price: item.price || 0,
-            attributes: item.attributes || {},
-          })),
+          items: validatedItems,
           totalAmount: 0,
           aiExtraction: {
             rawMessage: messageText,
@@ -247,6 +323,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
           messageText,
           store,
           order,
+          catalog,
         );
         response = { text: replyText };
         conversation.status = "order_created";
@@ -255,6 +332,8 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
           aiResult,
           messageText,
           store,
+          null,
+          catalog,
         );
         response = { text: replyText };
 
