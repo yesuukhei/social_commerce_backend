@@ -87,14 +87,8 @@ exports.getFacebookPages = async (req, res) => {
  */
 exports.connectFacebookPage = async (req, res) => {
   try {
-    const {
-      pageId,
-      pageAccessToken,
-      pageName,
-      logoUrl,
-      instagramBusinessId,
-      storeId,
-    } = req.body;
+    const { pageId, pageAccessToken, pageName, logoUrl, instagramBusinessId } =
+      req.body;
 
     if (!pageId || !pageAccessToken) {
       return res
@@ -102,33 +96,23 @@ exports.connectFacebookPage = async (req, res) => {
         .json({ success: false, message: "Page ID and Token are required" });
     }
 
-    // 1. Senior Logic: Look for the store by FB ID first
+    // 1. Check if MUST update an existing store or CREATE a new one
+    // Logic: Find store by facebookPageId OR create new
     let store = await Store.findOne({
       facebookPageId: pageId,
       user: req.user._id,
     });
 
-    if (!store && storeId) {
-      // 2. If not found by FB ID, check if we are updating the current 'pending' store
-      store = await Store.findOne({
-        _id: storeId,
-        user: req.user._id,
-        facebookPageId: "pending",
-      });
-    }
-
     if (store) {
-      // Update existing or "Pending" store
-      store.facebookPageId = pageId;
+      // Update existing
       store.facebookPageToken = pageAccessToken;
       store.name = pageName || store.name;
       store.logoUrl = logoUrl || store.logoUrl;
       store.instagramBusinessId =
         instagramBusinessId || store.instagramBusinessId;
       await store.save();
-      console.log(`✅ Store updated with FB Page: ${store.name}`);
     } else {
-      // Create a completely new store
+      // Create new store from Facebook Page
       store = await Store.create({
         user: req.user._id,
         name: pageName || "Шинэ дэлгүүр",
@@ -137,7 +121,6 @@ exports.connectFacebookPage = async (req, res) => {
         facebookPageToken: pageAccessToken,
         instagramBusinessId: instagramBusinessId || null,
       });
-      console.log(`🆕 Created new store from FB Page: ${store.name}`);
     }
 
     // Senior Automation: Automatically subscribe the page to our app's webhooks
@@ -250,19 +233,21 @@ exports.getSettings = async (req, res) => {
   try {
     const { storeId } = req.query;
 
-    // Find specific store or the default one for this user
-    const filter = { user: req.user._id };
-    if (storeId) filter._id = storeId;
+    let store;
 
-    let store = await Store.findOne(filter);
+    if (storeId) {
+      store = await Store.findOne({ _id: storeId, user: req.user._id });
+    }
 
-    if (!store && !storeId) {
-      // Create a default store for this user if absolutely none exists
-      store = await Store.create({
-        user: req.user._id,
-        name: `${req.user.name}-ийн дэлгүүр`,
-        facebookPageId: "pending",
-        facebookPageToken: "pending",
+    if (!store) {
+      store = await Store.findOne({ user: req.user._id });
+    }
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "No stores found. Please create one.",
+        needsOnboarding: true,
       });
     }
 
