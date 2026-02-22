@@ -181,8 +181,6 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
 
       conversation.currentIntent = aiResult.intent || "browsing";
 
-      let populatedOrder; // Declare here so it is accessible outside the if block
-
       // Safety check: if AI extracted all data but forgot to set isOrderReady to true
 
       if (
@@ -227,18 +225,6 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
           }, 0);
         }
 
-        // --- NEW: Generate Payment Invoice (QPay) ---
-        if (order.totalAmount > 0) {
-          const paymentResult = await paymentService.createQPayInvoice(order);
-          if (paymentResult.success) {
-            order.paymentMethod = "qpay";
-            order.paymentDetails = {
-              invoiceId: paymentResult.data.invoiceId,
-              qrCode: paymentResult.data.qrCode,
-            };
-          }
-        }
-
         await order.save();
 
         // Real-time Notification for Admin
@@ -253,8 +239,6 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         // Link order to conversation for UI recap
         conversation.orders.push(order._id);
         console.log(`✅ Order Draft created for ${store.name}: ${order._id}`);
-
-        populatedOrder = await Order.findById(order._id).populate("customer");
 
         // Pass the saved 'order' to generate a detailed confirmation
         const replyText = await aiService.generateResponse(
@@ -300,23 +284,6 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
         response,
         store.facebookPageToken,
       );
-
-      // --- NEW: Send QR Code image if exists ---
-      if (
-        conversation.status === "order_created" &&
-        populatedOrder?.paymentDetails?.invoiceId
-      ) {
-        console.log(
-          `💳 Sending QPay link for Invoice: ${populatedOrder.paymentDetails.invoiceId}`,
-        );
-        await messengerService.sendMessage(
-          senderPsid,
-          {
-            text: `💳 Төлбөрийн нэхэмжлэл: ${populatedOrder.paymentDetails.invoiceId}\n\nТа QPay ашиглан доорх холбоосоор болон банкны апп-аар төлнө үү: https://qpay.mn/q/${populatedOrder.paymentDetails.invoiceId}`,
-          },
-          store.facebookPageToken,
-        );
-      }
     } else if (receivedMessage.attachments) {
       response = {
         text: "📷 Зураг хүлээн авлаа! Захиалгын мэдээллээ текстээр илгээнэ үү.",

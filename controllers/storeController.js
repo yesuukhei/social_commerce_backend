@@ -260,11 +260,18 @@ exports.getSettings = async (req, res) => {
       data: {
         id: store._id,
         name: store.name,
+        logoUrl: store.logoUrl,
+        facebookPageId: store.facebookPageId,
+        instagramBusinessId: store.instagramBusinessId,
         googleSheetId: store.googleSheetId,
         customInstructions: store.customInstructions,
         columnMapping: store.columnMapping,
         hasDelivery: store.hasDelivery,
+        deliveryFee: store.deliveryFee,
+        deliveryTime: store.deliveryTime,
         pickupAddress: store.pickupAddress,
+        paymentDetails: store.paymentDetails,
+        paymentMethod: store.paymentMethod,
         sheetUrl: store.googleSheetId
           ? `https://docs.google.com/spreadsheets/d/${store.googleSheetId}`
           : "",
@@ -304,8 +311,20 @@ exports.updateSettings = async (req, res) => {
     if (req.body.hasDelivery !== undefined)
       updateData.hasDelivery = req.body.hasDelivery;
 
+    if (req.body.deliveryFee !== undefined)
+      updateData.deliveryFee = req.body.deliveryFee;
+
+    if (req.body.deliveryTime !== undefined)
+      updateData.deliveryTime = req.body.deliveryTime;
+
     if (req.body.pickupAddress !== undefined)
       updateData.pickupAddress = req.body.pickupAddress;
+
+    if (req.body.paymentDetails !== undefined)
+      updateData.paymentDetails = req.body.paymentDetails;
+
+    if (req.body.paymentMethod !== undefined)
+      updateData.paymentMethod = req.body.paymentMethod;
 
     if (req.body.columnMapping) {
       updateData.columnMapping = req.body.columnMapping;

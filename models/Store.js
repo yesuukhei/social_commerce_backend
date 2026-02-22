@@ -78,7 +78,7 @@ const storeSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["manual", "direct_qpay", "hub_qpay", "cash"],
+      enum: ["manual", "cash"],
       default: "manual",
     },
     isActive: {

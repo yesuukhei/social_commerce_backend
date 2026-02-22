@@ -37,12 +37,10 @@ const buildBusinessRulesContext = (settings = {}) => {
   if (settings.paymentMethod === "manual" || !settings.paymentMethod) {
     const bank = settings.paymentDetails;
     payment = `ТӨЛБӨР (Дансаар): ${bank?.bankName || ""} [${bank?.accountNumber || ""}]${bank?.iban ? ` (IBAN: ${bank.iban})` : ""} - ${bank?.accountHolder || ""}\n!!! ЧУХАЛ: Гүйлгээний утга дээр УТАСНЫ ДУГААРАА заавал бичихийг сануул !!!`;
-  } else if (settings.paymentMethod === "hub_qpay") {
-    payment = `ТӨЛБӨР: QPay QR код үүсгэх боломжтой. (Автомат баталгаажуулалттай)`;
   } else if (settings.paymentMethod === "cash") {
     payment = `ТӨЛБӨР: Бэлнээр (Хүргэлтээр очих үед эсвэл очиж авахдаа бэлнээр төлж болно).`;
   } else {
-    payment = `ТӨЛБӨР: Дэлгүүрийн QPay холбогдсон.`;
+    payment = `ТӨЛБӨР: Тодорхойгүй.`;
   }
 
   return `${delivery}\n${payment}`;
