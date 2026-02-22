@@ -118,16 +118,16 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
       // Find or create customer
       const customer = await findOrCreateCustomer(senderPsid, store);
 
-      // Find or create conversation
+      // Find or create conversation — always scoped to the current store
       let conversation = await Conversation.findOne({
         facebookConversationId: senderPsid,
-        customer: customer._id,
+        store: store._id,
       });
 
       if (!conversation) {
         conversation = new Conversation({
           customer: customer._id,
-          store: store._id, // Link to current store
+          store: store._id,
           facebookConversationId: senderPsid,
           currentIntent: "browsing",
         });
