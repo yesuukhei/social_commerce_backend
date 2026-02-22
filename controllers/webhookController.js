@@ -211,6 +211,7 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
             confidence: aiResult.confidence,
             needsReview: !aiResult.data.phone || !aiResult.data.full_address,
           },
+          paymentMethod: store.paymentMethod || "manual",
           status: "pending",
         };
 
