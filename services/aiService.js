@@ -88,7 +88,7 @@ JSON БҮТЭЦ:
     "phone": string,
     "full_address": string
   },
-  "missingFields": string[],
+  "missingFields": string[], (Хэрэв intent="ordering" бол бараа эсвэл утас дутуу бол энд бичнэ${storeSettings.hasDelivery !== false ? ", мөн хаяг дутуу бол энд бичнэ" : ". АНХААР: Энэ дэлгүүр хүргэлтгүй тул ХЭЗЭЭ Ч хаяг дутуу гэж бичихгүй, хаяг асуухгүй!"}),
   "confidence": number (0-1 хооронд)
 }`;
 
@@ -147,7 +147,8 @@ ${buildCatalogContext(catalog)}
 4. Каталогд байхгүй бараа байвал "манай каталогд байхгүй" гэж хэл.
 5. Хүргэлт болон төлбөрийн мэдээллийг дараах дүрмийн дагуу өг:
 ${buildBusinessRulesContext(storeSettings)}
-6. Хэтэрхий "Робот" шиг битгий ярь.`;
+6. Хэрэв дэлгүүрийн хаяг (очиж авах хаяг) асуувал дүрмийн дагуу үнэн зөвөөр хариул.
+7. Хэтэрхий "Робот" шиг битгий ярь.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",

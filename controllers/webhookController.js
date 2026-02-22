@@ -181,6 +181,18 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
 
       conversation.currentIntent = aiResult.intent || "browsing";
 
+      // Safety check: if delivery is disabled, NEVER ask for an address
+      if (store.hasDelivery === false) {
+        if (Array.isArray(aiResult.missingFields)) {
+          aiResult.missingFields = aiResult.missingFields.filter(
+            (f) => !f.includes("хаяг") && !f.includes("address"),
+          );
+        }
+        if (aiResult.data) {
+          delete aiResult.data.full_address;
+        }
+      }
+
       // Safety check: if AI extracted all data but forgot to set isOrderReady to true
       if (aiResult.intent === "ordering" && !aiResult.isOrderReady) {
         const hasItems = aiResult.data?.items?.length > 0;
@@ -285,7 +297,9 @@ async function handleMessage(senderPsid, receivedMessage, store, catalog) {
             rawMessage: messageText,
             extractedData: aiResult.data,
             confidence: aiResult.confidence,
-            needsReview: !aiResult.data.phone || !aiResult.data.full_address,
+            needsReview:
+              !aiResult.data.phone ||
+              (store.hasDelivery !== false && !aiResult.data.full_address),
           },
           paymentMethod: store.paymentMethod || "manual",
           status: "pending",
